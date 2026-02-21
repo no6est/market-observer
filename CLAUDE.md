@@ -30,19 +30,32 @@ Generate Markdown reports with:
 - Logging and error handling required
 - Rate limit & backoff for any HTTP calls
 
-## Repository Structure (suggested)
-- src/
-  - collectors/
-  - detectors/
-  - enrichers/
-  - reporter/
-  - storage/
-  - utils/
+## Repository Structure
+- app/
+  - collectors/   # price, RSS, Reddit, HackerNews
+  - detectors/    # price_anomaly, volume_anomaly, mention_anomaly, combined
+  - enrichers/    # hypothesis, shock_classifier, impact_scorer, causal_chain, propagation, theme_extractor, structural_questions, ticker_aliases
+  - reporter/     # daily_report + Jinja2 templates
+  - llm/          # Gemini client
+  - utils/        # http_client
 - configs/
 - reports/
 - tests/
 
+## Git Workflow
+- **Never push directly to main.** Always use feature branches and pull requests.
+- Branch naming: `feature/<topic>`, `fix/<topic>`, `refactor/<topic>`
+- Run `pytest` and confirm all tests pass before committing.
+- PR description should summarize what changed and why.
+- Never commit secrets (.env, API keys, credentials, DB files).
+- `reports/` directory: only commit representative samples, not every daily output.
+
+## Security
+- API keys must be managed via environment variables (.env), never hardcoded.
+- .env is in .gitignore. Only .env.example (with placeholder values) is committed.
+- Data files (*.db) are in .gitignore.
+
 ## Quality Bar
 - Unit tests for anomaly scoring & report rendering
 - Clear docstrings & type hints
-- Sample report checked into `reports/sample_*.md`
+- Sample report checked into `reports/`
