@@ -1,0 +1,78 @@
+tickers:
+  - NVDA
+  - MSFT
+  - GOOGL
+  - SNOW
+  - CRWD
+  - DDOG
+  - PLTR
+  - NET
+  - MDB
+  - PATH
+
+rss_feeds:
+  - name: TechCrunch
+    url: https://techcrunch.com/feed/
+  - name: ArsTechnica
+    url: https://feeds.arstechnica.com/arstechnica/index
+  - name: TheVerge
+    url: https://www.theverge.com/rss/index.xml
+
+reddit:
+  subreddits:
+    - wallstreetbets
+    - stocks
+    - technology
+  limit_per_sub: 50
+
+hackernews:
+  enabled: true
+  min_score: 10
+  limit: 100
+
+detection:
+  lookback_days: 20
+  z_threshold: 2.0
+  cooldown_hours: 24
+  max_anomalies_per_report: 10
+
+report:
+  output_dir: reports
+  top_n_anomalies: 5
+  top_n_themes: 5
+
+sector_map:
+  AI_Infrastructure:
+    - NVDA
+    - GOOGL
+    - MSFT
+    - AMD
+    - SMCI
+  Cloud_Security:
+    - CRWD
+    - PANW
+    - ZS
+    - FTNT
+  Data_Platform:
+    - SNOW
+    - DDOG
+    - MDB
+    - ESTC
+  Enterprise_AI:
+    - PLTR
+    - PATH
+    - AI
+    - BBAI
+  Cloud_Networking:
+    - NET
+    - ANET
+    - CSCO
+
+database:
+  path: data/market_obs.db
+
+gemini:
+  enabled: true
+  model: gemini-3-flash-preview
+  # api_key: set via GEMINI_API_KEY env var or uncomment below
+  # api_key: "your-api-key-here"

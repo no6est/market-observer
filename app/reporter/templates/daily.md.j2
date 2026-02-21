@@ -1,0 +1,107 @@
+# 日次マーケット観測レポート - {{ date }}
+
+---
+
+## 異常検出サマリー
+
+| 順位 | 銘柄 | シグナル | スコア | サマリー |
+|------|------|----------|--------|----------|
+{% for a in anomalies -%}
+| {{ loop.index }} | {{ a.ticker }} | {{ {"price_change": "価格変動", "volume_spike": "出来高急増", "mention_surge": "言及急増"}.get(a.signal_type, a.signal_type) }} | {{ "%.2f"|format(a.score) }} | {{ a.summary | default("N/A") }} |
+{% endfor -%}
+{% if not anomalies -%}
+| - | - | - | - | 異常は検出されませんでした |
+{% endif %}
+
+---
+
+## 新興テーマ
+
+{% for t in themes -%}
+### {{ loop.index }}. {{ t.name }}
+{% if t.relevance_score is defined -%}
+- **関連度スコア**: {{ "%.4f"|format(t.relevance_score) }}
+{% else -%}
+- **モメンタム**: {{ "%.2f"|format(t.momentum) if t.momentum is defined else "N/A" }}
+{% endif -%}
+- **言及数**: {{ t.mention_count | default(0) }}
+- **キーワード**: {{ t.keywords | join(", ") if t.keywords else "N/A" }}
+
+{% endfor -%}
+{% if not themes -%}
+新興テーマは検出されませんでした。
+{% endif %}
+
+---
+
+## ファクト（何が起きたか）
+
+{% for f in facts -%}
+- {{ f.text }}{% if f.source %} ([出典]({{ f.source }})){% endif %}
+
+{% endfor -%}
+{% if not facts -%}
+特筆すべきファクトはありませんでした。
+{% endif %}
+
+---
+
+## 仮説（なぜ起きたか）
+
+{% for h in hypotheses -%}
+### {{ loop.index }}. {{ h.hypothesis }}
+- **確信度**: {{ "%.0f"|format(h.confidence * 100) if h.confidence is defined else "N/A" }}%
+- **状況**: {{ h.context | default("N/A") }}
+{% if h.evidence_titles | default([]) -%}
+- **関連する記事・投稿**:
+{% for title in h.evidence_titles -%}
+  - {{ title }}
+{% endfor -%}
+{% endif -%}
+- **根拠URL**:
+{% for url in h.evidence | default([]) -%}
+  - [{{ url }}]({{ url }})
+{% endfor -%}
+{% if not h.evidence | default([]) -%}
+  - なし
+{% endif -%}
+- **反論・留意点**:
+{% for cp in h.counterpoints | default([]) -%}
+  - {{ cp }}
+{% endfor -%}
+{% if not h.counterpoints | default([]) -%}
+  - 特定されていません
+{% endif %}
+
+{% endfor -%}
+{% if not hypotheses -%}
+仮説は生成されませんでした。
+{% endif %}
+
+---
+
+## 波及候補
+
+{% for p in propagation -%}
+### {{ p.source_ticker }} → {{ p.related_tickers | join(", ") }}
+- **セクター**: {{ p.sector | default("N/A") }}
+- **理由**: {{ p.reason | default("N/A") }}
+
+{% endfor -%}
+{% if not propagation -%}
+波及候補は特定されませんでした。
+{% endif %}
+
+---
+
+## 追跡クエリ
+
+{% for q in tracking_queries -%}
+- `{{ q }}`
+{% endfor -%}
+{% if not tracking_queries -%}
+追跡クエリは生成されませんでした。
+{% endif %}
+
+---
+*レポート生成日時: {{ generated_at }}*

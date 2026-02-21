@@ -1,0 +1,122 @@
+# 構造変化観測レポート - {{ date }}
+
+---
+
+## 構造インパクトランキング
+
+| 順位 | 銘柄 | ショックタイプ | SIS | シグナル | サマリー |
+|------|------|----------------|-----|----------|----------|
+{% for e in events -%}
+| {{ loop.index }} | {{ e.ticker }} | {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(e.shock_type, e.shock_type) }} | {{ "%.3f"|format(e.sis) }} | {{ {"price_change": "価格変動", "volume_spike": "出来高急増", "mention_surge": "言及急増"}.get(e.signal_type, e.signal_type) }} | {{ e.summary | default("N/A") }} |
+{% endfor -%}
+{% if not events -%}
+| - | - | - | - | - | 構造変化イベントは検出されませんでした |
+{% endif %}
+
+---
+
+## 構造変化テーマ
+
+{% for t in structural_themes -%}
+### {{ loop.index }}. {{ t.name }}
+- **ショックタイプ**: {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(t.shock_type, t.shock_type) }}
+- **関連銘柄**: {{ t.tickers | join(", ") }}
+- **セクター**: {{ {"AI_Infrastructure": "AI基盤", "Cloud_Security": "クラウドセキュリティ", "Data_Platform": "データプラットフォーム", "Enterprise_AI": "エンタープライズAI", "Cloud_Networking": "クラウドネットワーキング"}.get(t.sector, t.sector) | default("N/A") }}
+- **平均SIS**: {{ "%.3f"|format(t.sis_avg) }}
+{% if t.keywords -%}
+- **キーワード**: {{ t.keywords | join(", ") }}
+{% endif -%}
+- **概要**: {{ t.description }}
+
+{% endfor -%}
+{% if not structural_themes -%}
+構造変化テーマは検出されませんでした。
+{% endif %}
+
+---
+
+## 因果チェーン
+
+{% for c in causal_chains -%}
+### {{ c.ticker }}（{{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(c.shock_type, c.shock_type) }}）
+
+{{ c.text_graph }}
+
+{% endfor -%}
+{% if not causal_chains -%}
+因果チェーンは生成されませんでした。
+{% endif %}
+
+---
+
+## 仮説（なぜ起きたか）
+
+{% for h in hypotheses -%}
+### {{ loop.index }}. {{ h.hypothesis }}
+- **確信度**: {{ "%.0f"|format(h.confidence * 100) if h.confidence is defined else "N/A" }}%
+- **状況**: {{ h.context | default("N/A") }}
+{% if h.evidence_titles | default([]) -%}
+- **関連する記事・投稿**:
+{% for title in h.evidence_titles -%}
+  - {{ title }}
+{% endfor -%}
+{% endif -%}
+- **根拠URL**:
+{% for url in h.evidence | default([]) -%}
+  - [{{ url }}]({{ url }})
+{% endfor -%}
+{% if not h.evidence | default([]) -%}
+  - なし
+{% endif -%}
+- **反論・留意点**:
+{% for cp in h.counterpoints | default([]) -%}
+  - {{ cp }}
+{% endfor -%}
+{% if not h.counterpoints | default([]) -%}
+  - 特定されていません
+{% endif %}
+
+{% endfor -%}
+{% if not hypotheses -%}
+仮説は生成されませんでした。
+{% endif %}
+
+---
+
+## 波及候補
+
+{% for p in propagation -%}
+### {{ p.source_ticker }} → {{ p.related_tickers | join(", ") }}
+- **セクター**: {{ p.sector | default("N/A") }}
+- **理由**: {{ p.reason | default("N/A") }}
+
+{% endfor -%}
+{% if not propagation -%}
+波及候補は特定されませんでした。
+{% endif %}
+
+---
+
+## 構造変化である場合の問い
+
+{% for q in structural_questions -%}
+{{ loop.index }}. {{ q }}
+
+{% endfor -%}
+{% if not structural_questions -%}
+問いは生成されませんでした。
+{% endif %}
+
+---
+
+## 追跡クエリ
+
+{% for q in tracking_queries -%}
+- `{{ q }}`
+{% endfor -%}
+{% if not tracking_queries -%}
+追跡クエリは生成されませんでした。
+{% endif %}
+
+---
+*レポート生成日時: {{ generated_at }}*
