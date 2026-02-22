@@ -235,6 +235,10 @@ _SECTOR_JA: dict[str, str] = {
     "Data_Platform": "データプラットフォーム",
     "Enterprise_AI": "エンタープライズAI",
     "Cloud_Networking": "クラウドネットワーキング",
+    "Energy": "エネルギー",
+    "Financial": "金融",
+    "Healthcare": "ヘルスケア",
+    "Defense_Geopolitics": "防衛・地政学",
 }
 
 

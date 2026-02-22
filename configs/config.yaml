@@ -9,6 +9,12 @@ tickers:
   - NET
   - MDB
   - PATH
+  # 非AI銘柄（ナラティブ多様性確保）
+  - XOM    # エネルギー
+  - JPM    # 金融
+  - UNH    # ヘルスケア
+  - LMT    # 防衛・地政学
+  - NEE    # 公益・エネルギー転換
 
 rss_feeds:
   - name: TechCrunch
@@ -17,12 +23,21 @@ rss_feeds:
     url: https://feeds.arstechnica.com/arstechnica/index
   - name: TheVerge
     url: https://www.theverge.com/rss/index.xml
+  # 非テック系（ナラティブ多様性確保）
+  - name: ReutersBusiness
+    url: https://www.reutersagency.com/feed/?best-topics=business-finance
+  - name: CNBC
+    url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114
+  - name: MarketWatch
+    url: https://feeds.content.dowjones.io/public/rss/mw_topstories
 
 reddit:
   subreddits:
     - wallstreetbets
     - stocks
     - technology
+    - investing
+    - energy
   limit_per_sub: 50
 
 hackernews:
@@ -67,6 +82,26 @@ sector_map:
     - NET
     - ANET
     - CSCO
+  Energy:
+    - XOM
+    - CVX
+    - NEE
+    - SLB
+  Financial:
+    - JPM
+    - GS
+    - MS
+    - BLK
+  Healthcare:
+    - UNH
+    - JNJ
+    - PFE
+    - ABBV
+  Defense_Geopolitics:
+    - LMT
+    - RTX
+    - NOC
+    - GD
 
 database:
   path: data/market_obs.db
@@ -76,3 +111,26 @@ gemini:
   model: gemini-3-flash-preview
   # api_key: set via GEMINI_API_KEY env var or uncomment below
   # api_key: "your-api-key-here"
+
+narrative:
+  ai_threshold: 0.3
+  overheat_ai_pct: 0.5
+  overheat_streak_days: 3
+  concentration_warning_pct: 0.6
+  top_n_non_ai: 3
+  narrative_basis: all_events
+  overheat_delta_threshold: 0.15
+  overheat_evidence_threshold: 0.3
+
+baseline:
+  windows: [7, 30, 90]
+  z_threshold: 2.0
+  min_samples: 3
+
+regime:
+  vol_threshold: 0.25
+  declining_threshold: 0.50
+
+echo_chamber:
+  similarity_threshold: 0.7
+  min_correction: 0.5

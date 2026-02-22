@@ -8,6 +8,7 @@ from typing import Any
 
 from app.database import Database
 from app.config import DetectionConfig
+from app.enrichers.ticker_aliases import TICKER_ALIASES
 
 logger = logging.getLogger(__name__)
 
@@ -20,15 +21,28 @@ _AMBIGUOUS_TICKERS = frozenset({
 
 
 def _count_mentions(ticker: str, texts: list[str]) -> int:
-    """Count occurrences of a ticker symbol in a list of text strings.
+    """Count occurrences of a ticker symbol or its company name aliases.
 
     Uses word-boundary matching to avoid partial matches. For ambiguous
     tickers (common English words like PATH, NET), uses case-sensitive
-    matching to reduce false positives.
+    matching to reduce false positives. Also matches company name aliases
+    from TICKER_ALIASES (e.g. "Exxon" for XOM, "JPMorgan" for JPM).
     """
-    flags = 0 if ticker.upper() in _AMBIGUOUS_TICKERS else re.IGNORECASE
-    pattern = re.compile(r"\b" + re.escape(ticker) + r"\b", flags)
-    return sum(len(pattern.findall(text)) for text in texts)
+    aliases = TICKER_ALIASES.get(ticker, [ticker])
+    total = 0
+    for alias in aliases:
+        if alias.upper() in _AMBIGUOUS_TICKERS:
+            flags = 0  # case-sensitive
+        else:
+            flags = re.IGNORECASE
+        pattern = re.compile(r"\b" + re.escape(alias) + r"\b", flags)
+        total += sum(len(pattern.findall(text)) for text in texts)
+    # Also count the ticker itself if not already in aliases
+    if ticker not in aliases:
+        flags = 0 if ticker.upper() in _AMBIGUOUS_TICKERS else re.IGNORECASE
+        pattern = re.compile(r"\b" + re.escape(ticker) + r"\b", flags)
+        total += sum(len(pattern.findall(text)) for text in texts)
+    return total
 
 
 def detect_mention_anomalies(

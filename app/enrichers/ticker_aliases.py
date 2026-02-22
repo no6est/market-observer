@@ -21,6 +21,12 @@ TICKER_ALIASES: dict[str, list[str]] = {
     "NET": ["Cloudflare"],  # "NET" alone is ambiguous
     "MDB": ["MongoDB", "MDB"],
     "PATH": ["UiPath"],  # "PATH" alone is ambiguous
+    # 非AI銘柄
+    "XOM": ["Exxon", "ExxonMobil", "XOM"],
+    "JPM": ["JPMorgan", "JP Morgan", "Chase", "JPM"],
+    "UNH": ["UnitedHealth", "United Health", "UNH"],
+    "LMT": ["Lockheed", "Lockheed Martin", "LMT"],
+    "NEE": ["NextEra", "NEE"],
 }
 
 

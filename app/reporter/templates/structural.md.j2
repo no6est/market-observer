@@ -4,16 +4,67 @@
 
 ## 構造インパクトランキング
 
-| 順位 | 銘柄 | ショックタイプ | SIS | シグナル | サマリー |
-|------|------|----------------|-----|----------|----------|
+| 順位 | 銘柄 | ショックタイプ | SIS | 裏付け | SPP | シグナル | サマリー |
+|------|------|----------------|-----|--------|-----|----------|----------|
 {% for e in events -%}
-| {{ loop.index }} | {{ e.ticker }} | {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(e.shock_type, e.shock_type) }} | {{ "%.3f"|format(e.sis) }} | {{ {"price_change": "価格変動", "volume_spike": "出来高急増", "mention_surge": "言及急増"}.get(e.signal_type, e.signal_type) }} | {{ e.summary | default("N/A") }} |
+| {{ loop.index }} | {{ e.ticker }} | {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(e.shock_type, e.shock_type) }} | {{ "%.3f"|format(e.sis) }} | {{ "%.2f"|format(e.evidence_score | default(0)) }} | {{ "%.2f"|format(e.spp | default(0)) }} | {{ {"price_change": "価格変動", "volume_spike": "出来高急増", "mention_surge": "言及急増"}.get(e.signal_type, e.signal_type) }} | {{ e.summary | default("N/A") }} |
 {% endfor -%}
 {% if not events -%}
-| - | - | - | - | - | 構造変化イベントは検出されませんでした |
+| - | - | - | - | - | - | - | 構造変化イベントは検出されませんでした |
 {% endif %}
 
 ---
+
+{% if narrative_index -%}
+## ナラティブ分布
+
+> **母集団**: {{ narrative_index.basis }}（{{ narrative_index.basis_events }}件{% if narrative_index.total_events != narrative_index.basis_events %} / 全{{ narrative_index.total_events }}件{% endif %}）
+
+| カテゴリ | 件数 | 比率 |
+|----------|------|------|
+{% for cat, info in narrative_index.category_distribution.items() -%}
+| {{ cat }} | {{ info.count }} | {{ "%.0f"|format(info.pct * 100) }}% |
+{% endfor -%}
+{% if not narrative_index.category_distribution -%}
+| - | - | データなし |
+{% endif %}
+
+- **AI関連比率**: {{ "%.0f"|format(narrative_index.ai_ratio * 100) }}%
+- **トップ1集中度**: {{ "%.0f"|format(narrative_index.top1_concentration * 100) }}%
+{% if narrative_index.historical_avg -%}
+- **7日平均AI比率**: {{ "%.0f"|format(narrative_index.historical_avg.get("AI/LLM/自動化", 0) * 100) }}%
+{% endif -%}
+
+{% if narrative_index.warning_flags -%}
+**警告:**
+{% for w in narrative_index.warning_flags -%}
+- {{ w }}
+{% endfor -%}
+{% endif %}
+
+---
+
+{% endif -%}
+
+{% if non_ai_highlights -%}
+## 非AI構造変化ハイライト
+
+{% for h in non_ai_highlights -%}
+### {{ loop.index }}. {{ h.ticker }}（{{ h.narrative_category }}）
+- **サマリー**: {{ h.summary }}
+- **SIS**: {{ "%.3f"|format(h.sis) }} / **裏付け**: {{ "%.2f"|format(h.evidence_score | default(0)) }}
+- **注目度不足スコア**: {{ "%.3f"|format(h.undercovered_score | default(0)) }}
+- **ショックタイプ**: {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(h.shock_type, h.shock_type) }}
+- **AI中心度**: {{ "%.1f"|format(h.ai_centricity * 100) }}%
+{% if h.evidence_titles -%}
+- **関連記事**:
+{% for title in h.evidence_titles -%}
+  - {{ title }}
+{% endfor -%}
+{% endif %}
+
+{% endfor -%}
+{% endif -%}
 
 ## 構造変化テーマ
 
@@ -89,13 +140,113 @@
 ### {{ p.source_ticker }} → {{ p.related_tickers | join(", ") }}
 - **セクター**: {{ p.sector | default("N/A") }}
 - **理由**: {{ p.reason | default("N/A") }}
-
+{% if p.direction is defined and p.direction != "unknown" -%}
+- **波及方向**: {{ {"positive": "ポジティブ", "negative": "ネガティブ", "mixed": "混合"}.get(p.direction, p.direction) }}（確信度: {{ "%.0f"|format(p.direction_confidence * 100) }}%、過去{{ p.direction_sample_count }}件）
+{% endif %}
 {% endfor -%}
 {% if not propagation -%}
 波及候補は特定されませんでした。
 {% endif %}
 
 ---
+
+{% if narrative_health -%}
+## 統計的ベースライン評価
+
+> **統計期間**: {{ narrative_health.window }}日間（サンプル数: {{ narrative_health.sample_size }}）
+
+| カテゴリ | 現在値 | 平均値 | 標準偏差 | z-score | 通常範囲 | 判定 |
+|----------|--------|--------|----------|---------|----------|------|
+{% for cat, s in narrative_health.category_scores.items() -%}
+| {{ cat }} | {{ "%.0f"|format(s.current_pct * 100) }}% | {% if s.mean is not none %}{{ "%.0f"|format(s.mean * 100) }}%{% else %}-{% endif %} | {% if s.std is not none %}{{ "%.1f"|format(s.std * 100) }}pt{% else %}-{% endif %} | {% if s.z_score is not none %}{{ "%.2f"|format(s.z_score) }}{% else %}-{% endif %} | {% if s.normal_range is not none %}{{ "%.0f"|format(s.normal_range.0 * 100) }}-{{ "%.0f"|format(s.normal_range.1 * 100) }}%{% else %}-{% endif %} | {{ {"normal": "正常", "elevated": "上昇", "anomalous": "異常", "insufficient_data": "データ不足"}.get(s.status, s.status) }} |
+{% endfor -%}
+
+{% if narrative_health.anomalous_categories -%}
+**統計的異常カテゴリ**: {{ narrative_health.anomalous_categories | join(", ") }}
+{% endif -%}
+
+- **健全性サマリー**: {{ narrative_health.health_summary }}
+
+---
+
+{% endif -%}
+
+{% if regime_info -%}
+## 市場レジーム
+
+| 指標 | 値 |
+|------|-----|
+| **現在のレジーム** | {{ {"normal": "平時", "high_vol": "高ボラティリティ", "tightening": "引き締め"}.get(regime_info.regime, regime_info.regime) }} |
+| **平均ボラティリティ** | {{ "%.1f"|format(regime_info.avg_volatility * 100) }}%（年率換算） |
+| **下落銘柄比率** | {{ "%.0f"|format(regime_info.declining_pct * 100) }}% |
+| **判定信頼度** | {{ "%.0f"|format(regime_info.regime_confidence * 100) }}% |
+
+{% if regime_info.spp_weights -%}
+**適用SPPウェイト**: {% for k, v in regime_info.spp_weights.items() %}{{ k }}={{ "%.2f"|format(v) }}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endif -%}
+
+---
+
+{% endif -%}
+
+{% if echo_info -%}
+## メディア・エコーチェンバー評価
+
+| 指標 | 値 |
+|------|-----|
+| **総ソース数** | {{ echo_info.total_sources }} |
+| **独立ソース数** | {{ echo_info.independent_sources }} |
+| **エコー比率** | {{ "%.0f"|format(echo_info.echo_ratio * 100) }}% |
+| **補正係数** | {{ "%.2f"|format(echo_info.correction_factor) }} |
+
+{% if echo_info.echo_clusters -%}
+**エコークラスター**:
+{% for c in echo_info.echo_clusters[:5] -%}
+- 「{{ c.representative_title | truncate(60) }}」（{{ c.source_count }}ソース: {{ c.sources | join(", ") }}）
+{% endfor -%}
+{% endif %}
+
+---
+
+{% endif -%}
+
+{% if overheat_alert -%}
+## ナラティブ健全性評価
+
+> **{{ overheat_alert.severity | upper }}**: {{ overheat_alert.message }}
+
+**検出条件:**
+- AI関連比率: {{ "%.0f"|format(overheat_alert.conditions.ai_ratio * 100) }}%
+{% if overheat_alert.conditions.historical_ai_avg is not none -%}
+- 7日平均AI比率: {{ "%.0f"|format(overheat_alert.conditions.historical_ai_avg * 100) }}%
+{% endif -%}
+- 裏付けスコア中央値: {{ "%.2f"|format(overheat_alert.conditions.median_evidence_score) }}
+- AI優勢連続日数: {{ overheat_alert.conditions.consecutive_ai_dominant_days }}日
+
+**推奨アクション:**
+{{ overheat_alert.recommendation }}
+
+---
+
+{% endif -%}
+
+{% if early_drift_candidates -%}
+## Early Drift（初動検出）
+
+> ※ カテゴリ比率<20%、z-score≧1.5、SNS→Tier2伝播、価格未反応の全条件を満たすイベント
+
+{% for d in early_drift_candidates -%}
+### {{ loop.index }}. {{ d.ticker }}（{{ d.narrative_category }}）
+- **カテゴリ比率**: {{ "%.0f"|format(d.category_pct * 100) }}%（z-score={{ "%.2f"|format(d.z_score) }}）
+- **伝播**: {{ d.diffusion_pattern }}
+- **市場反応**: 未反応
+{% if d.summary %}- **サマリー**: {{ d.summary }}{% endif %}
+
+{% endfor -%}
+
+---
+
+{% endif -%}
 
 ## 構造変化である場合の問い
 
