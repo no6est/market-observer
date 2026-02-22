@@ -616,6 +616,53 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_price_data_range(
+        self, ticker: str, start_date: str, end_date: str,
+    ) -> list[dict[str, Any]]:
+        """Get price data for a ticker within a date range.
+
+        Args:
+            ticker: Ticker symbol.
+            start_date: Start date string (YYYY-MM-DD).
+            end_date: End date string (YYYY-MM-DD).
+
+        Returns:
+            List of price data dicts ordered by timestamp.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT ticker, timestamp, open, high, low, close, volume
+                   FROM price_data
+                   WHERE ticker = ? AND timestamp >= ? AND timestamp <= ?
+                   ORDER BY timestamp""",
+                (ticker, start_date, end_date + " 23:59:59"),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_drift_hypotheses(
+        self, days_old: int = 30, reference_date: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get drift_pending hypotheses older than days_old.
+
+        Args:
+            days_old: Minimum age in days for the hypothesis.
+            reference_date: Reference date for cutoff calculation.
+
+        Returns:
+            List of hypothesis dicts with drift_pending status.
+        """
+        cutoff = self._cutoff_str(reference_date=reference_date, days=days_old)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT id, date, ticker, hypothesis, evidence, confidence,
+                          status, evaluation_date, evaluation_result
+                   FROM hypothesis_logs
+                   WHERE status = 'drift_pending' AND date <= ?
+                   ORDER BY date""",
+                (cutoff[:10],),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_articles_by_date_range(self, days: int = 7, reference_date: str | None = None) -> list[dict[str, Any]]:
         """Get articles collected within the given date range."""
         cutoff = self._cutoff_str(reference_date=reference_date, days=days)

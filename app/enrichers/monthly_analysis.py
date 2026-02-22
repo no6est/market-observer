@@ -85,6 +85,12 @@ def compute_monthly_analysis(
         "narrative_trend": [],
         "regime_history": [],
         "period": f"過去{days}日間",
+        # v7: Market response structure
+        "reaction_lag": None,
+        "watch_ticker_followup": None,
+        "extinction_chains": None,
+        "drift_evaluation": None,
+        "response_profile": None,
     }
 
     # --- 1. Fetch base data ---
@@ -223,6 +229,53 @@ def compute_monthly_analysis(
         )
     except Exception:
         logger.debug("Failed to generate forward posture")
+
+    # --- 9. Reaction Lag (PHASE 1) ---
+    try:
+        from app.enrichers.market_response import compute_reaction_lag
+        result["reaction_lag"] = compute_reaction_lag(
+            db, days=days, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to compute reaction lag")
+
+    # --- 10. Watch Ticker Follow-up (PHASE 2) ---
+    try:
+        from app.enrichers.market_response import compute_watch_ticker_followup
+        result["watch_ticker_followup"] = compute_watch_ticker_followup(
+            db, days=days, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to compute watch ticker followup")
+
+    # --- 11. Narrative Extinction Chain (PHASE 3) ---
+    try:
+        from app.enrichers.market_response import detect_narrative_extinction_chain
+        result["extinction_chains"] = detect_narrative_extinction_chain(
+            db, days=days, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to detect narrative extinction chains")
+
+    # --- 12. Drift Evaluation (PHASE 4) ---
+    try:
+        from app.enrichers.market_response import evaluate_drift_followups
+        result["drift_evaluation"] = evaluate_drift_followups(
+            db, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to evaluate drift followups")
+
+    # --- 13. Response Profile (PHASE 5, depends on 9 + 11) ---
+    try:
+        from app.enrichers.market_response import compute_response_profile
+        result["response_profile"] = compute_response_profile(
+            db, days=days, reference_date=reference_date,
+            reaction_lag_result=result.get("reaction_lag"),
+            extinction_result=result.get("extinction_chains"),
+        )
+    except Exception:
+        logger.debug("Failed to compute response profile")
 
     logger.info(
         "Monthly analysis: %d lifecycle cats, %d evaluations, %d transitions, "

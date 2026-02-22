@@ -213,6 +213,20 @@ def generate_monthly_report(
         "no_coverage": "カバレッジなし",
     }
 
+    response_type_ja = {
+        "即時反応型": "即時反応型",
+        "遅延持続型": "遅延持続型",
+        "一時的過熱型": "一時的過熱型",
+        "無反応型": "無反応型",
+        "再編型": "再編型",
+    }
+    outcome_ja = {
+        "仮説強化": "仮説強化",
+        "収束": "収束",
+        "反転": "反転",
+        "再編連鎖": "再編連鎖",
+    }
+
     rendered = template.render(
         date=date,
         analysis=analysis,
@@ -220,6 +234,8 @@ def generate_monthly_report(
         eval_ja=eval_ja,
         regime_ja=regime_ja,
         pattern_ja=pattern_ja,
+        response_type_ja=response_type_ja,
+        outcome_ja=outcome_ja,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 

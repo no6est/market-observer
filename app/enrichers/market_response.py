@@ -1,0 +1,881 @@
+"""Market response structure analysis — v7.
+
+Analyzes how markets respond to narratives over time:
+- PHASE 1: Reaction lag analysis (narrative → price response delay)
+- PHASE 2: Watch ticker follow-up (previous month evaluation)
+- PHASE 3: Narrative extinction / reorganization chain detection
+- PHASE 4: Early drift persistent tracking and evaluation
+- PHASE 5: Market response profile classification
+
+This module produces metrics only — no hypotheses are generated.
+All language uses "co-occurrence / response" framing, never causal assertions.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from collections import Counter
+from datetime import datetime, timedelta
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# PHASE 1: Reaction Lag Analysis
+# ---------------------------------------------------------------------------
+
+_REACTION_THRESHOLD_PCT = 2.0
+_MAX_LAG_DAYS = 30
+_HISTOGRAM_BUCKETS = [
+    "0日", "1日", "2日", "3日", "4日", "5日", "6-10日", "11+日", "未反応",
+]
+
+
+def compute_reaction_lag(
+    db: Any,
+    days: int = 30,
+    reference_date: str | None = None,
+) -> dict[str, Any]:
+    """Compute reaction lag between narrative events and price moves.
+
+    For each enriched event, measures how many days until the ticker's
+    daily return exceeds ±2%.
+
+    Args:
+        db: Database instance.
+        days: Analysis window in days.
+        reference_date: Reference date (YYYY-MM-DD).
+
+    Returns:
+        Dict with event_lags, stats, and histogram_data.
+    """
+    empty = {
+        "event_lags": [],
+        "stats": {
+            "avg_lag": 0.0,
+            "median_lag": 0.0,
+            "immediate_rate": 0.0,
+            "delayed_rate": 0.0,
+            "no_reaction_rate": 0.0,
+            "total_events": 0,
+        },
+        "histogram_data": [(b, 0) for b in _HISTOGRAM_BUCKETS],
+    }
+
+    try:
+        events = db.get_enriched_events_history(
+            days=days, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to fetch enriched events for reaction lag")
+        return empty
+
+    if not events:
+        return empty
+
+    event_lags: list[dict[str, Any]] = []
+
+    for event in events:
+        ticker = event.get("ticker")
+        event_date = event.get("date")
+        if not ticker or not event_date:
+            continue
+
+        try:
+            start_dt = datetime.strptime(event_date, "%Y-%m-%d")
+        except ValueError:
+            continue
+
+        end_dt = start_dt + timedelta(days=_MAX_LAG_DAYS)
+        start_str = event_date
+        end_str = end_dt.strftime("%Y-%m-%d")
+
+        try:
+            prices = db.get_price_data_range(ticker, start_str, end_str)
+        except Exception:
+            logger.debug("No price data for %s in range %s-%s", ticker, start_str, end_str)
+            event_lags.append({
+                "ticker": ticker,
+                "date": event_date,
+                "lag_days": None,
+                "reaction_pct": 0.0,
+                "reacted": False,
+            })
+            continue
+
+        if len(prices) < 2:
+            event_lags.append({
+                "ticker": ticker,
+                "date": event_date,
+                "lag_days": None,
+                "reaction_pct": 0.0,
+                "reacted": False,
+            })
+            continue
+
+        lag_days = None
+        reaction_pct = 0.0
+        for i in range(1, len(prices)):
+            prev_close = prices[i - 1].get("close")
+            curr_close = prices[i].get("close")
+            if prev_close is None or curr_close is None or prev_close == 0:
+                continue
+            daily_return = abs((curr_close - prev_close) / prev_close) * 100
+            if daily_return >= _REACTION_THRESHOLD_PCT:
+                lag_days = i
+                reaction_pct = (curr_close - prev_close) / prev_close * 100
+                break
+
+        event_lags.append({
+            "ticker": ticker,
+            "date": event_date,
+            "lag_days": lag_days,
+            "reaction_pct": round(reaction_pct, 2),
+            "reacted": lag_days is not None,
+        })
+
+    # Compute stats
+    reacted_lags = [el["lag_days"] for el in event_lags if el["reacted"]]
+    total = len(event_lags)
+
+    if total == 0:
+        return empty
+
+    if reacted_lags:
+        avg_lag = sum(reacted_lags) / len(reacted_lags)
+        sorted_lags = sorted(reacted_lags)
+        mid = len(sorted_lags) // 2
+        if len(sorted_lags) % 2 == 0 and len(sorted_lags) >= 2:
+            median_lag = (sorted_lags[mid - 1] + sorted_lags[mid]) / 2
+        else:
+            median_lag = sorted_lags[mid]
+    else:
+        avg_lag = 0.0
+        median_lag = 0.0
+
+    immediate_count = sum(1 for el in event_lags if el["reacted"] and el["lag_days"] <= 1)
+    delayed_count = sum(1 for el in event_lags if el["reacted"] and el["lag_days"] >= 3)
+    no_reaction_count = sum(1 for el in event_lags if not el["reacted"])
+
+    stats = {
+        "avg_lag": round(avg_lag, 1),
+        "median_lag": round(median_lag, 1),
+        "immediate_rate": round(immediate_count / total, 3),
+        "delayed_rate": round(delayed_count / total, 3),
+        "no_reaction_rate": round(no_reaction_count / total, 3),
+        "total_events": total,
+    }
+
+    # Build histogram
+    histogram: dict[str, int] = {b: 0 for b in _HISTOGRAM_BUCKETS}
+    for el in event_lags:
+        if not el["reacted"]:
+            histogram["未反応"] += 1
+        elif el["lag_days"] <= 5:
+            histogram[f"{el['lag_days']}日"] += 1
+        elif el["lag_days"] <= 10:
+            histogram["6-10日"] += 1
+        else:
+            histogram["11+日"] += 1
+
+    histogram_data = [(b, histogram[b]) for b in _HISTOGRAM_BUCKETS]
+
+    return {
+        "event_lags": event_lags,
+        "stats": stats,
+        "histogram_data": histogram_data,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PHASE 2: Watch Ticker Follow-up
+# ---------------------------------------------------------------------------
+
+
+def _get_previous_watch_tickers(
+    db: Any,
+    days: int,
+    prev_ref: str,
+) -> list[dict[str, Any]]:
+    """Extract watch tickers from previous period without full monthly analysis.
+
+    Lightweight extraction: gets core tickers + new tickers from previous
+    month's enriched events and structural persistence data.
+
+    Args:
+        db: Database instance.
+        days: Period length in days.
+        prev_ref: Previous period reference date.
+
+    Returns:
+        List of watch ticker dicts with 'ticker' and 'reason'.
+    """
+    try:
+        prev_enriched = db.get_enriched_events_history(
+            days=days, reference_date=prev_ref,
+        )
+    except Exception:
+        return []
+
+    if not prev_enriched:
+        return []
+
+    # Identify tickers with high SPP or frequent appearance
+    ticker_data: dict[str, dict[str, Any]] = {}
+    dates = set()
+    for e in prev_enriched:
+        ticker = e.get("ticker", "")
+        if not ticker:
+            continue
+        date = e.get("date", "")
+        dates.add(date)
+        if ticker not in ticker_data:
+            ticker_data[ticker] = {
+                "dates": set(),
+                "spp_values": [],
+            }
+        ticker_data[ticker]["dates"].add(date)
+        spp = e.get("spp")
+        if spp is not None:
+            ticker_data[ticker]["spp_values"].append(spp)
+
+    total_days = len(dates) or 1
+    watch: list[dict[str, Any]] = []
+    for ticker, td in ticker_data.items():
+        ratio = len(td["dates"]) / total_days
+        avg_spp = (
+            sum(td["spp_values"]) / len(td["spp_values"])
+            if td["spp_values"]
+            else 0.0
+        )
+        if ratio >= 0.6 or avg_spp >= 0.5:
+            watch.append({
+                "ticker": ticker,
+                "reason": "コア銘柄" if ratio >= 0.6 else "高SPP",
+                "prev_spp": round(avg_spp, 3),
+            })
+
+    return watch
+
+
+def compute_watch_ticker_followup(
+    db: Any,
+    days: int = 30,
+    reference_date: str | None = None,
+) -> dict[str, Any]:
+    """Evaluate previous month's watch tickers against current data.
+
+    Args:
+        db: Database instance.
+        days: Analysis window in days.
+        reference_date: Reference date (YYYY-MM-DD).
+
+    Returns:
+        Dict with available flag, followups list, and outcome distribution.
+    """
+    empty: dict[str, Any] = {
+        "available": False,
+        "followups": [],
+        "outcome_distribution": {},
+    }
+
+    if reference_date:
+        ref_dt = datetime.strptime(reference_date, "%Y-%m-%d")
+    else:
+        ref_dt = datetime.utcnow()
+    prev_ref = (ref_dt - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    prev_watch = _get_previous_watch_tickers(db, days, prev_ref)
+    if not prev_watch:
+        return empty
+
+    # Get current period enriched events
+    try:
+        curr_enriched = db.get_enriched_events_history(
+            days=days, reference_date=reference_date,
+        )
+    except Exception:
+        return empty
+
+    # Build current ticker SPP map
+    curr_spp_map: dict[str, list[float]] = {}
+    curr_tickers: set[str] = set()
+    for e in curr_enriched:
+        ticker = e.get("ticker", "")
+        if not ticker:
+            continue
+        curr_tickers.add(ticker)
+        spp = e.get("spp")
+        if spp is not None:
+            curr_spp_map.setdefault(ticker, []).append(spp)
+
+    # Get current and previous narrative share
+    try:
+        curr_narrative = db.get_narrative_history(
+            days=days, reference_date=reference_date,
+        )
+        prev_narrative = db.get_narrative_history(
+            days=days, reference_date=prev_ref,
+        )
+    except Exception:
+        curr_narrative = []
+        prev_narrative = []
+
+    def _narrative_share_for_ticker(enriched: list[dict], ticker: str) -> float:
+        """Approximate narrative share as count of events for ticker / total."""
+        total = len(enriched) or 1
+        ticker_count = sum(1 for e in enriched if e.get("ticker") == ticker)
+        return ticker_count / total
+
+    # Get price changes
+    def _get_price_change(ticker: str) -> float | None:
+        """Get price change percentage over the period."""
+        try:
+            ref_str = reference_date or ref_dt.strftime("%Y-%m-%d")
+            start_str = prev_ref
+            prices = db.get_price_data_range(ticker, start_str, ref_str)
+            if prices and len(prices) >= 2:
+                first_close = prices[0].get("close")
+                last_close = prices[-1].get("close")
+                if first_close and first_close != 0:
+                    return ((last_close - first_close) / first_close) * 100
+        except Exception:
+            pass
+        return None
+
+    followups: list[dict[str, Any]] = []
+    outcome_counts: Counter = Counter()
+
+    for watch in prev_watch:
+        ticker = watch["ticker"]
+        prev_spp = watch.get("prev_spp", 0.0)
+
+        curr_spp_values = curr_spp_map.get(ticker, [])
+        curr_spp = (
+            sum(curr_spp_values) / len(curr_spp_values)
+            if curr_spp_values
+            else 0.0
+        )
+
+        price_change = _get_price_change(ticker)
+        price_change_pct = price_change if price_change is not None else 0.0
+
+        prev_enriched_list = db.get_enriched_events_history(
+            days=days, reference_date=prev_ref,
+        )
+        prev_share = _narrative_share_for_ticker(prev_enriched_list, ticker)
+        curr_share = _narrative_share_for_ticker(curr_enriched, ticker)
+        narrative_share_change = curr_share - prev_share
+
+        # Determine outcome
+        if ticker not in curr_tickers:
+            outcome = "再編連鎖"
+        elif (
+            curr_spp > prev_spp
+            and (price_change_pct > 0 or narrative_share_change > 0)
+        ):
+            outcome = "仮説強化"
+        elif (
+            curr_spp < prev_spp
+            and narrative_share_change < 0
+            and abs(price_change_pct) < 2.0
+        ):
+            outcome = "収束"
+        elif price_change is not None and (
+            (price_change_pct > 2.0 and prev_spp < 0.3)
+            or (price_change_pct < -2.0 and prev_spp > 0.5)
+        ):
+            outcome = "反転"
+        else:
+            outcome = "仮説強化"
+
+        followups.append({
+            "ticker": ticker,
+            "prev_spp": round(prev_spp, 3),
+            "curr_spp": round(curr_spp, 3),
+            "price_change_pct": round(price_change_pct, 2),
+            "narrative_share_change": round(narrative_share_change, 3),
+            "outcome": outcome,
+        })
+        outcome_counts[outcome] += 1
+
+    return {
+        "available": True,
+        "followups": followups,
+        "outcome_distribution": dict(outcome_counts),
+    }
+
+
+# ---------------------------------------------------------------------------
+# PHASE 3: Narrative Extinction / Reorganization Chain
+# ---------------------------------------------------------------------------
+
+
+def _extract_bigrams(text: str) -> Counter:
+    """Extract word bigrams from text (supports ASCII and CJK).
+
+    Args:
+        text: Input text string.
+
+    Returns:
+        Counter of bigram strings like "word1_word2".
+    """
+    if not text:
+        return Counter()
+    words = re.findall(
+        r'[a-zA-Z]{2,}|[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]+',
+        text.lower(),
+    )
+    if len(words) < 2:
+        return Counter()
+    return Counter(
+        f"{words[i]}_{words[i + 1]}" for i in range(len(words) - 1)
+    )
+
+
+def detect_narrative_extinction_chain(
+    db: Any,
+    days: int = 30,
+    reference_date: str | None = None,
+) -> dict[str, Any]:
+    """Detect narrative categories that declined and may have reorganized.
+
+    Splits the analysis period into first/second half, identifies
+    declining and rising categories, then checks for shared bigrams
+    in event summaries as evidence of reorganization.
+
+    Args:
+        db: Database instance.
+        days: Analysis window in days.
+        reference_date: Reference date (YYYY-MM-DD).
+
+    Returns:
+        Dict with chains list and reorganization_map.
+    """
+    empty: dict[str, Any] = {
+        "chains": [],
+        "reorganization_map": {},
+    }
+
+    try:
+        narrative_history = db.get_narrative_history(
+            days=days, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to fetch narrative history for extinction chain")
+        return empty
+
+    if not narrative_history:
+        return empty
+
+    # Group by date
+    daily_data: dict[str, dict[str, float]] = {}
+    for row in narrative_history:
+        date = row.get("date", "")
+        cat = row.get("category", "")
+        pct = row.get("event_pct", 0.0)
+        if date not in daily_data:
+            daily_data[date] = {}
+        daily_data[date][cat] = pct
+
+    sorted_dates = sorted(daily_data.keys())
+    if len(sorted_dates) < 4:
+        return empty
+
+    mid = len(sorted_dates) // 2
+    first_half_dates = sorted_dates[:mid]
+    second_half_dates = sorted_dates[mid:]
+
+    # Compute average pct per category for each half
+    all_categories = set()
+    for cats in daily_data.values():
+        all_categories.update(cats.keys())
+
+    first_avg: dict[str, float] = {}
+    second_avg: dict[str, float] = {}
+    for cat in all_categories:
+        first_values = [daily_data[d].get(cat, 0.0) for d in first_half_dates]
+        second_values = [daily_data[d].get(cat, 0.0) for d in second_half_dates]
+        first_avg[cat] = (
+            sum(first_values) / len(first_values)
+            if first_values
+            else 0.0
+        )
+        second_avg[cat] = (
+            sum(second_values) / len(second_values)
+            if second_values
+            else 0.0
+        )
+
+    # Identify declining and rising categories (5pt = 0.05 threshold)
+    declining = [
+        cat for cat in all_categories
+        if first_avg.get(cat, 0.0) - second_avg.get(cat, 0.0) >= 0.05
+    ]
+    rising = [
+        cat for cat in all_categories
+        if second_avg.get(cat, 0.0) - first_avg.get(cat, 0.0) >= 0.05
+    ]
+
+    if not declining or not rising:
+        return empty
+
+    # Get enriched events for bigram analysis
+    try:
+        enriched = db.get_enriched_events_history(
+            days=days, reference_date=reference_date,
+        )
+    except Exception:
+        enriched = []
+
+    # Build per-category bigram collections from event summaries
+    cat_bigrams: dict[str, Counter] = {}
+    cat_events: dict[str, list[dict]] = {}
+    for e in enriched:
+        cat = e.get("narrative_category", "")
+        summary = e.get("summary", "")
+        if not cat or not summary:
+            continue
+        if cat not in cat_bigrams:
+            cat_bigrams[cat] = Counter()
+            cat_events[cat] = []
+        cat_bigrams[cat] += _extract_bigrams(summary)
+        cat_events[cat].append(e)
+
+    # Find reorganization chains
+    chains: list[dict[str, Any]] = []
+    reorg_map: dict[str, list[str]] = {}
+
+    for d_cat in declining:
+        d_bigrams = cat_bigrams.get(d_cat, Counter())
+        if not d_bigrams:
+            continue
+        candidates: list[str] = []
+        for r_cat in rising:
+            r_bigrams = cat_bigrams.get(r_cat, Counter())
+            if not r_bigrams:
+                continue
+            # Find shared bigrams
+            shared = set(d_bigrams.keys()) & set(r_bigrams.keys())
+            # Count co-occurrences (min count across both)
+            overlap_score = sum(
+                min(d_bigrams[bg], r_bigrams[bg]) for bg in shared
+            )
+            if overlap_score >= 2:
+                sample_events = []
+                for e in cat_events.get(d_cat, [])[:2]:
+                    sample_events.append({
+                        "ticker": e.get("ticker", ""),
+                        "date": e.get("date", ""),
+                        "summary": (e.get("summary", "") or "")[:80],
+                    })
+                chains.append({
+                    "declining_cat": d_cat,
+                    "rising_cat": r_cat,
+                    "shared_keywords": sorted(shared)[:10],
+                    "overlap_score": overlap_score,
+                    "sample_events": sample_events,
+                })
+                candidates.append(r_cat)
+        if candidates:
+            reorg_map[d_cat] = candidates
+
+    return {
+        "chains": chains,
+        "reorganization_map": reorg_map,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PHASE 4: Early Drift Persistent Tracking
+# ---------------------------------------------------------------------------
+
+
+def track_early_drift_persistent(
+    db: Any,
+    drift_candidates: list[dict[str, Any]],
+    reference_date: str | None = None,
+) -> int:
+    """Persist early drift candidates as hypothesis_logs with status='drift_pending'.
+
+    Args:
+        db: Database instance.
+        drift_candidates: Early drift detection results from daily pipeline.
+        reference_date: Date string (YYYY-MM-DD).
+
+    Returns:
+        Number of drift entries persisted.
+    """
+    if not drift_candidates:
+        return 0
+
+    today = reference_date or datetime.utcnow().strftime("%Y-%m-%d")
+    count = 0
+
+    for d in drift_candidates:
+        try:
+            db.insert_hypothesis_log({
+                "date": today,
+                "ticker": d.get("ticker", ""),
+                "hypothesis": (
+                    f"Early Drift: {d.get('narrative_category', '')} "
+                    f"(z={d.get('z_score', 0):.2f}, "
+                    f"diffusion={d.get('diffusion_pattern', '')})"
+                ),
+                "evidence": d.get("summary", ""),
+                "confidence": 0.3,
+                "status": "drift_pending",
+            })
+            count += 1
+        except Exception:
+            logger.debug("Failed to persist drift for %s", d.get("ticker"))
+
+    return count
+
+
+def evaluate_drift_followups(
+    db: Any,
+    reference_date: str | None = None,
+    followup_days: int = 30,
+) -> dict[str, Any]:
+    """Evaluate drift_pending hypotheses older than followup_days.
+
+    Checks whether each drift candidate reached Tier1 coverage
+    or triggered a price reaction.
+
+    Args:
+        db: Database instance.
+        reference_date: Reference date (YYYY-MM-DD).
+        followup_days: Minimum age in days before evaluation.
+
+    Returns:
+        Dict with evaluations list and aggregate stats.
+    """
+    empty: dict[str, Any] = {
+        "evaluations": [],
+        "stats": {
+            "total": 0,
+            "tier1_arrival_rate": 0.0,
+            "price_reaction_rate": 0.0,
+            "drift_success_rate": 0.0,
+        },
+    }
+
+    try:
+        drift_hyps = db.get_drift_hypotheses(followup_days, reference_date)
+    except Exception:
+        logger.debug("Failed to fetch drift hypotheses")
+        return empty
+
+    if not drift_hyps:
+        return empty
+
+    evaluations: list[dict[str, Any]] = []
+
+    for hyp in drift_hyps:
+        ticker = hyp.get("ticker", "")
+        hyp_date = hyp.get("date", "")
+        hyp_id = hyp.get("id")
+
+        # Check Tier1 arrival: look at enriched events after drift date
+        tier1_arrived = False
+        price_reacted = False
+
+        try:
+            later_events = db.get_enriched_events_history(
+                days=followup_days, reference_date=reference_date,
+            )
+            for e in later_events:
+                if e.get("ticker") == ticker:
+                    if (e.get("tier1_count") or 0) > 0:
+                        tier1_arrived = True
+                    break
+        except Exception:
+            pass
+
+        # Check price reaction
+        try:
+            ref_str = reference_date or datetime.utcnow().strftime("%Y-%m-%d")
+            prices = db.get_price_data_range(ticker, hyp_date, ref_str)
+            if prices and len(prices) >= 2:
+                first_close = prices[0].get("close")
+                last_close = prices[-1].get("close")
+                if first_close and first_close != 0:
+                    change = abs((last_close - first_close) / first_close) * 100
+                    if change >= _REACTION_THRESHOLD_PCT:
+                        price_reacted = True
+        except Exception:
+            pass
+
+        outcome = "成功" if tier1_arrived or price_reacted else "未到達"
+
+        evaluations.append({
+            "id": hyp_id,
+            "ticker": ticker,
+            "date": hyp_date,
+            "tier1_arrived": tier1_arrived,
+            "price_reacted": price_reacted,
+            "outcome": outcome,
+        })
+
+    total = len(evaluations)
+    tier1_count = sum(1 for e in evaluations if e["tier1_arrived"])
+    price_count = sum(1 for e in evaluations if e["price_reacted"])
+    success_count = sum(1 for e in evaluations if e["outcome"] == "成功")
+
+    return {
+        "evaluations": evaluations,
+        "stats": {
+            "total": total,
+            "tier1_arrival_rate": round(tier1_count / total, 3) if total else 0.0,
+            "price_reaction_rate": round(price_count / total, 3) if total else 0.0,
+            "drift_success_rate": round(success_count / total, 3) if total else 0.0,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# PHASE 5: Market Response Profile
+# ---------------------------------------------------------------------------
+
+
+_RESPONSE_TYPES = [
+    "即時反応型",
+    "遅延持続型",
+    "一時的過熱型",
+    "無反応型",
+    "再編型",
+]
+
+
+def compute_response_profile(
+    db: Any,
+    days: int = 30,
+    reference_date: str | None = None,
+    reaction_lag_result: dict[str, Any] | None = None,
+    extinction_result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Classify each event's market response type.
+
+    Classification rules (priority order):
+    1. Ticker in extinction chain's declining category → 再編型
+    2. No lag info or no reaction → 無反応型
+    3. lag_days <= 1 AND SPP < 0.3 → 一時的過熱型
+    4. lag_days <= 1 AND SPP >= 0.3 → 即時反応型
+    5. lag_days >= 3 AND SPP > 0.5 → 遅延持続型
+    6. Default → 即時反応型
+
+    Args:
+        db: Database instance.
+        days: Analysis window.
+        reference_date: Reference date.
+        reaction_lag_result: Output from compute_reaction_lag().
+        extinction_result: Output from detect_narrative_extinction_chain().
+
+    Returns:
+        Dict with event_profiles, distribution, distribution_pct.
+    """
+    empty: dict[str, Any] = {
+        "event_profiles": [],
+        "distribution": {t: 0 for t in _RESPONSE_TYPES},
+        "distribution_pct": {t: 0.0 for t in _RESPONSE_TYPES},
+    }
+
+    if reaction_lag_result is None:
+        reaction_lag_result = compute_reaction_lag(
+            db, days=days, reference_date=reference_date,
+        )
+
+    event_lags = reaction_lag_result.get("event_lags", [])
+    if not event_lags:
+        return empty
+
+    # Build lag lookup: (ticker, date) -> lag info
+    lag_lookup: dict[tuple[str, str], dict] = {}
+    for el in event_lags:
+        key = (el.get("ticker", ""), el.get("date", ""))
+        lag_lookup[key] = el
+
+    # Build declining tickers set from extinction chains
+    declining_tickers: set[str] = set()
+    if extinction_result:
+        for chain in extinction_result.get("chains", []):
+            # Events in the declining category's sample_events
+            for se in chain.get("sample_events", []):
+                declining_tickers.add(se.get("ticker", ""))
+
+    # Also build declining categories for matching
+    declining_cats: set[str] = set()
+    if extinction_result:
+        for chain in extinction_result.get("chains", []):
+            declining_cats.add(chain.get("declining_cat", ""))
+
+    # Get enriched events for SPP data
+    try:
+        enriched = db.get_enriched_events_history(
+            days=days, reference_date=reference_date,
+        )
+    except Exception:
+        enriched = []
+
+    # Build SPP lookup
+    spp_lookup: dict[tuple[str, str], float] = {}
+    cat_lookup: dict[tuple[str, str], str] = {}
+    for e in enriched:
+        key = (e.get("ticker", ""), e.get("date", ""))
+        spp_lookup[key] = e.get("spp") or 0.0
+        cat_lookup[key] = e.get("narrative_category", "")
+
+    profiles: list[dict[str, Any]] = []
+    distribution: Counter = Counter()
+
+    for el in event_lags:
+        ticker = el.get("ticker", "")
+        date = el.get("date", "")
+        key = (ticker, date)
+        lag_days = el.get("lag_days")
+        reacted = el.get("reacted", False)
+        spp = spp_lookup.get(key, 0.0)
+        cat = cat_lookup.get(key, "")
+
+        # Classification (priority order)
+        if cat in declining_cats or ticker in declining_tickers:
+            response_type = "再編型"
+            evidence = "ナラティブ消滅チェーンの衰退カテゴリに該当"
+        elif not reacted or lag_days is None:
+            response_type = "無反応型"
+            evidence = f"分析期間内に±{_REACTION_THRESHOLD_PCT}%超の反応なし"
+        elif lag_days <= 1 and spp < 0.3:
+            response_type = "一時的過熱型"
+            evidence = f"即時反応(lag={lag_days}日)だが低持続性(SPP={spp:.2f})"
+        elif lag_days <= 1 and spp >= 0.3:
+            response_type = "即時反応型"
+            evidence = f"即時反応(lag={lag_days}日)かつ持続性あり(SPP={spp:.2f})"
+        elif lag_days >= 3 and spp > 0.5:
+            response_type = "遅延持続型"
+            evidence = f"遅延反応(lag={lag_days}日)で高持続性(SPP={spp:.2f})"
+        else:
+            response_type = "即時反応型"
+            evidence = f"lag={lag_days}日, SPP={spp:.2f}"
+
+        profiles.append({
+            "ticker": ticker,
+            "date": date,
+            "response_type": response_type,
+            "evidence": evidence,
+        })
+        distribution[response_type] += 1
+
+    total = len(profiles)
+    dist_dict = {t: distribution.get(t, 0) for t in _RESPONSE_TYPES}
+    dist_pct = {
+        t: round(distribution.get(t, 0) / total, 3) if total else 0.0
+        for t in _RESPONSE_TYPES
+    }
+
+    return {
+        "event_profiles": profiles,
+        "distribution": dist_dict,
+        "distribution_pct": dist_pct,
+    }

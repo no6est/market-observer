@@ -20,10 +20,21 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _DIFFUSION_LABELS: dict[str, str] = {
-    "sns_only": "SNSのみ",
-    "sns_to_tier2": "SNS→Tier2",
-    "sns_to_tier1": "SNS→Tier1",
-    "tier1_direct": "Tier1直接",
+    "sns_only": "SNS Only",
+    "sns_to_tier2": "SNS -> Tier2",
+    "sns_to_tier1": "SNS -> Tier1",
+    "tier1_direct": "Tier1 Direct",
+}
+
+# Japanese category -> English label for chart legends
+_CATEGORY_EN: dict[str, str] = {
+    "AI/LLM/自動化": "AI/LLM/Automation",
+    "エネルギー/資源": "Energy/Resources",
+    "金融/金利/流動性": "Finance/Rates/Liquidity",
+    "規制/政策/地政学": "Regulation/Policy/Geopolitics",
+    "サプライチェーン": "Supply Chain",
+    "半導体/ハードウェア": "Semiconductor/Hardware",
+    "その他": "Other",
 }
 
 _DIFFUSION_COLORS: dict[str, str] = {
@@ -108,14 +119,15 @@ def generate_narrative_trend_chart(
 
     muted_idx = 0
     for cat in all_categories:
+        label_en = _CATEGORY_EN.get(cat, cat)
         if cat == _AI_CATEGORY:
-            ax.plot(dates, series[cat], label=cat, color="red", linewidth=2.5)
+            ax.plot(dates, series[cat], label=label_en, color="red", linewidth=2.5)
         else:
             color = _MUTED_COLORS[muted_idx % len(_MUTED_COLORS)]
             muted_idx += 1
-            ax.plot(dates, series[cat], label=cat, color=color, linewidth=1.2)
+            ax.plot(dates, series[cat], label=label_en, color=color, linewidth=1.2)
 
-    ax.set_title("ナラティブカテゴリ推移（7日間）")
+    ax.set_title("Narrative Category Trend (7 days)")
     ax.set_ylabel("%")
     ax.set_ylim(0, 100)
     ax.yaxis.grid(True, linestyle="--", alpha=0.5)
@@ -180,8 +192,8 @@ def generate_media_diffusion_chart(
 
     fig, ax = plt.subplots(figsize=(8, 4))
     ax.barh(labels, values, color=colors)
-    ax.set_xlabel("件数")
-    ax.set_title("ナラティブ伝播構造")
+    ax.set_xlabel("Count")
+    ax.set_title("Narrative Diffusion Structure")
 
     fig.tight_layout()
     fig.savefig(str(output_path), dpi=150, bbox_inches="tight")
@@ -191,10 +203,74 @@ def generate_media_diffusion_chart(
     return str(output_path)
 
 
+def generate_reaction_lag_histogram(
+    histogram_data: list[tuple[str, int]],
+    output_path: str | Path,
+) -> Optional[str]:
+    """Generate a horizontal bar chart showing reaction lag distribution.
+
+    Parameters
+    ----------
+    histogram_data:
+        List of ``(bucket_label, count)`` tuples.
+        Expected buckets: 0日, 1日, ..., 5日, 6-10日, 11+日, 未反応.
+    output_path:
+        Filesystem path where the PNG will be written.
+
+    Returns
+    -------
+    str or None
+        The *output_path* as a string on success, ``None`` when data is empty.
+    """
+    if not histogram_data or all(count == 0 for _, count in histogram_data):
+        logger.warning("histogram_data is empty — skipping reaction lag chart")
+        return None
+
+    output_path = Path(output_path)
+
+    matplotlib.rcParams['font.family'] = ['DejaVu Sans', 'sans-serif']
+
+    # Translate bucket labels to English
+    _BUCKET_EN: dict[str, str] = {
+        "0日": "0d", "1日": "1d", "2日": "2d", "3日": "3d",
+        "4日": "4d", "5日": "5d", "6-10日": "6-10d", "11+日": "11+d",
+        "未反応": "No Reaction",
+    }
+    raw_labels = [label for label, _ in histogram_data]
+    labels = [_BUCKET_EN.get(l, l) for l in raw_labels]
+    values = [count for _, count in histogram_data]
+
+    # Color coding: immediate=green, delayed=orange, no reaction=grey
+    colors: list[str] = []
+    for label in raw_labels:
+        if label in ("0日", "1日"):
+            colors.append("#74c476")   # green — immediate
+        elif label in ("2日", "3日", "4日", "5日"):
+            colors.append("#fd8d3c")   # orange — moderate
+        elif label in ("6-10日", "11+日"):
+            colors.append("#d6616b")   # red — delayed
+        else:
+            colors.append("#bdbdbd")   # grey — no reaction
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.barh(labels, values, color=colors)
+    ax.set_xlabel("Count")
+    ax.set_title("Narrative -> Price Reaction Lag Distribution")
+    ax.invert_yaxis()
+
+    fig.tight_layout()
+    fig.savefig(str(output_path), dpi=150, bbox_inches="tight")
+    plt.close("all")
+
+    logger.info("Saved reaction lag histogram to %s", output_path)
+    return str(output_path)
+
+
 def generate_charts(
     narrative_trend: list[dict[str, Any]],
     propagation_data: dict[str, int],
     output_dir: str | Path,
+    date: str | None = None,
 ) -> dict[str, Optional[str]]:
     """Convenience wrapper that generates both charts into *output_dir*.
 
@@ -206,6 +282,9 @@ def generate_charts(
         Data for :func:`generate_media_diffusion_chart`.
     output_dir:
         Directory where the PNG files will be created.
+    date:
+        Report date string (YYYY-MM-DD) used as filename prefix.
+        If *None*, files are named without a date prefix.
 
     Returns
     -------
@@ -215,13 +294,15 @@ def generate_charts(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    prefix = f"{date}_" if date else ""
+
     trend_path = generate_narrative_trend_chart(
         narrative_trend,
-        output_dir / "narrative_trend.png",
+        output_dir / f"{prefix}narrative_trend.png",
     )
     diffusion_path = generate_media_diffusion_chart(
         propagation_data,
-        output_dir / "media_diffusion.png",
+        output_dir / f"{prefix}media_diffusion.png",
     )
 
     return {

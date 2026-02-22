@@ -736,10 +736,26 @@ def run_weekly(
                 narrative_trend=analysis.get("narrative_trend", []),
                 propagation_data=analysis.get("propagation_structure", {}),
                 output_dir=output_dir,
+                date=today,
             )
             analysis["chart_paths"] = chart_paths
         except Exception:
             logger.debug("Failed to generate charts")
+
+        # Persist early drift candidates from recent daily runs
+        try:
+            from app.enrichers.market_response import track_early_drift_persistent
+            drift_candidates = analysis.get("early_drift_candidates", [])
+            if drift_candidates:
+                drift_count = track_early_drift_persistent(
+                    db, drift_candidates, reference_date=today,
+                )
+                if drift_count:
+                    console.print(
+                        f"[bold magenta][weekly] Early Drift {drift_count}件を永続化"
+                    )
+        except Exception:
+            logger.debug("Failed to persist early drift candidates")
 
         report_md = generate_weekly_report(analysis=analysis, date=today)
 
@@ -783,6 +799,20 @@ def run_monthly(
         output_dir.mkdir(parents=True, exist_ok=True)
         report_path = output_dir / f"{today}_monthly.md"
         report_path.write_text(report_md, encoding="utf-8")
+
+        # Generate reaction lag histogram chart
+        try:
+            from app.enrichers.narrative_chart import generate_reaction_lag_histogram
+            lag_data = analysis.get("reaction_lag")
+            if lag_data and lag_data.get("histogram_data"):
+                chart_path = generate_reaction_lag_histogram(
+                    lag_data["histogram_data"],
+                    output_dir / f"{today}_reaction_lag.png",
+                )
+                if chart_path:
+                    console.print(f"[bold green][monthly] 反応ラグチャート保存: {chart_path}")
+        except Exception:
+            logger.debug("Failed to generate reaction lag histogram")
 
         console.print(f"[bold green][monthly] 月次レポート保存: {report_path}")
 

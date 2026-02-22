@@ -1,4 +1,4 @@
-# 構造変化観測レポート - 2026-02-22
+# 構造変化観測レポート - 2026-01-22
 
 ---
 
@@ -197,10 +197,10 @@ XOM: 前日比-3.5%の価格変動
 
 ## 追跡クエリ
 
-- `"NVDA" AND (disruption OR technology OR AI) since:2026-02-22`
-- `"XOM" AND (regulation OR policy OR compliance) since:2026-02-22`
-- `"JPM" AND (earnings OR news) since:2026-02-22`
+- `"NVDA" AND (disruption OR technology OR AI) since:2026-01-22`
+- `"XOM" AND (regulation OR policy OR compliance) since:2026-01-22`
+- `"JPM" AND (earnings OR news) since:2026-01-22`
 
 
 ---
-*レポート生成日時: 2026-02-22 01:56:11*
+*レポート生成日時: 2026-02-22 02:09:22*
