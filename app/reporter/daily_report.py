@@ -72,6 +72,13 @@ def generate_structural_report(
     structural_questions: list[str],
     tracking_queries: list[str],
     date: str | None = None,
+    narrative_index: dict[str, Any] | None = None,
+    non_ai_highlights: list[dict[str, Any]] | None = None,
+    overheat_alert: dict[str, Any] | None = None,
+    narrative_health: dict[str, Any] | None = None,
+    regime_info: dict[str, Any] | None = None,
+    echo_info: dict[str, Any] | None = None,
+    early_drift_candidates: list[dict[str, Any]] | None = None,
 ) -> str:
     """Generate a structural change observation report.
 
@@ -84,6 +91,10 @@ def generate_structural_report(
         structural_questions: Forward-looking questions.
         tracking_queries: Search query strings.
         date: Report date string (YYYY-MM-DD).
+        narrative_index: Narrative concentration metrics (optional).
+        non_ai_highlights: Non-AI structural change highlights (optional).
+        overheat_alert: Narrative overheat alert dict (optional).
+        early_drift_candidates: Early drift detection results (optional).
 
     Returns:
         Rendered Markdown string.
@@ -106,8 +117,111 @@ def generate_structural_report(
         propagation=propagation,
         structural_questions=structural_questions,
         tracking_queries=tracking_queries,
+        narrative_index=narrative_index,
+        non_ai_highlights=non_ai_highlights,
+        overheat_alert=overheat_alert,
+        narrative_health=narrative_health,
+        regime_info=regime_info,
+        echo_info=echo_info,
+        early_drift_candidates=early_drift_candidates or [],
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
     logger.info("Generated structural report for %s (%d chars)", date, len(rendered))
+    return rendered
+
+
+def generate_weekly_report(
+    analysis: dict[str, Any],
+    date: str | None = None,
+) -> str:
+    """Generate a weekly meta-analysis report.
+
+    Args:
+        analysis: Output from compute_weekly_analysis().
+        date: Report date string (YYYY-MM-DD).
+
+    Returns:
+        Rendered Markdown string.
+    """
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
+        keep_trailing_newline=True,
+    )
+    template = env.get_template("weekly.md.j2")
+
+    rendered = template.render(
+        date=date,
+        analysis=analysis,
+        generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    logger.info("Generated weekly report for %s (%d chars)", date, len(rendered))
+    return rendered
+
+
+def generate_monthly_report(
+    analysis: dict[str, Any],
+    date: str | None = None,
+) -> str:
+    """Generate a monthly narrative analysis report.
+
+    Args:
+        analysis: Output from compute_monthly_analysis().
+        date: Report date string (YYYY-MM-DD).
+
+    Returns:
+        Rendered Markdown string.
+    """
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
+        keep_trailing_newline=True,
+    )
+    template = env.get_template("monthly.md.j2")
+
+    # Translation dicts for template
+    trajectory_ja = {
+        "安定支配": "安定支配",
+        "上昇": "上昇",
+        "下降": "下降",
+        "急騰消滅": "急騰消滅",
+        "新興": "新興",
+        "不安定": "不安定",
+        "不在": "不在",
+    }
+    eval_ja = {
+        "confirmed": "確認",
+        "expired": "期限切れ",
+        "inconclusive": "判定不能",
+    }
+    regime_ja = {
+        "normal": "平時",
+        "high_vol": "高ボラ",
+        "tightening": "引き締め",
+    }
+    pattern_ja = {
+        "sns_only": "SNSのみ",
+        "sns_to_tier2": "SNS→Tier2",
+        "sns_to_tier1": "SNS→Tier1",
+        "tier1_direct": "Tier1直接",
+        "no_coverage": "カバレッジなし",
+    }
+
+    rendered = template.render(
+        date=date,
+        analysis=analysis,
+        trajectory_ja=trajectory_ja,
+        eval_ja=eval_ja,
+        regime_ja=regime_ja,
+        pattern_ja=pattern_ja,
+        generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    logger.info("Generated monthly report for %s (%d chars)", date, len(rendered))
     return rendered

@@ -1,0 +1,272 @@
+# 週次メタ分析レポート - {{ date }}
+
+> 分析期間: {{ analysis.period }}
+
+---
+
+## ショックタイプ分布
+
+{% if analysis.shock_type_distribution -%}
+| ショックタイプ | 件数 |
+|----------------|------|
+{% for shock_type, count in analysis.shock_type_distribution.items() -%}
+| {{ shock_type }} | {{ count }} |
+{% endfor -%}
+{% else -%}
+ショックタイプのデータはありません。
+{% endif %}
+
+---
+
+## ナラティブ推移
+
+{% if analysis.chart_paths and analysis.chart_paths.trend_chart -%}
+![ナラティブ推移]({{ analysis.chart_paths.trend_chart }})
+
+{% endif -%}
+{% if analysis.narrative_trend -%}
+{% for day in analysis.narrative_trend -%}
+### {{ day.date }}
+{% for cat, pct in day.categories.items() -%}
+- {{ cat }}: {{ "%.0f"|format(pct * 100) }}%
+{% endfor %}
+{% endfor -%}
+{% else -%}
+ナラティブ推移のデータはありません。
+{% endif %}
+
+---
+
+{% if analysis.propagation_structure -%}
+## ナラティブ伝播構造
+
+{% if analysis.chart_paths and analysis.chart_paths.diffusion_chart -%}
+![伝播構造]({{ analysis.chart_paths.diffusion_chart }})
+
+{% endif -%}
+| 伝播パターン | 件数 |
+|--------------|------|
+{% for pattern, count in analysis.propagation_structure.items() -%}
+| {{ {"sns_only": "SNSのみ", "sns_to_tier2": "SNS→Tier2", "sns_to_tier1": "SNS→Tier1", "tier1_direct": "Tier1直接", "no_coverage": "カバレッジなし"}.get(pattern, pattern) }} | {{ count }} |
+{% endfor %}
+
+---
+
+{% endif -%}
+
+{% if analysis.verification_summary -%}
+## 過熱警告事後検証
+
+> ※ "過熱警告を出したか"と"AI偏重が実際に続いたか"の検証
+
+| 指標 | 値 |
+|------|-----|
+| 検証対象数 | {{ analysis.verification_summary.total_predictions }} |
+| 正警告（TP） | {{ analysis.verification_summary.tp }} |
+| 過剰警告（FP） | {{ analysis.verification_summary.fp }} |
+| 正常判定（TN） | {{ analysis.verification_summary.tn }} |
+| 見逃し（FN） | {{ analysis.verification_summary.fn }} |
+{% if analysis.verification_summary.precision is not none -%}
+| Precision | {{ "%.1f"|format(analysis.verification_summary.precision * 100) }}% |
+{% endif -%}
+{% if analysis.verification_summary.recall is not none -%}
+| Recall | {{ "%.1f"|format(analysis.verification_summary.recall * 100) }}% |
+{% endif %}
+
+{% if analysis.verification_summary.verdicts -%}
+{% for v in analysis.verification_summary.verdicts -%}
+{%- set verdict_ja = {"TP":"正警告","FP":"過剰警告","TN":"正常判定","FN":"見逃し"} -%}
+- **{{ v.prediction_date }}**: {{ verdict_ja.get(v.verdict, v.verdict) }}{% if v.details %} — {{ v.details }}{% endif %}
+{% endfor %}
+{% endif %}
+
+---
+
+{% endif -%}
+
+## 非AIハイライト（週次）
+
+{% if analysis.non_ai_highlights -%}
+{% for h in analysis.non_ai_highlights -%}
+### {{ loop.index }}. {{ h.ticker }}
+- **サマリー**: {{ h.summary }}
+- **スコア**: {{ "%.2f"|format(h.score) }}
+- **ナラティブ分類**: {{ h.narrative_category }}
+- **ショックタイプ**: {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(h.shock_type, h.shock_type) }}
+{% if h.ai_centricity is defined -%}
+- **AI関連度**: {{ "%.0f"|format(h.ai_centricity * 100) }}%
+{% endif %}
+
+{% endfor -%}
+{% else -%}
+非AIハイライトはありませんでした。
+{% endif %}
+
+---
+
+{% if analysis.spp_top3 -%}
+## 構造持続確率 Top3
+
+| 順位 | 銘柄 | SPP | ショックタイプ | 伝播パターン | サマリー |
+|------|------|-----|----------------|--------------|----------|
+{% for e in analysis.spp_top3 -%}
+| {{ loop.index }} | {{ e.ticker }} | {{ "%.2f"|format(e.spp) }} | {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(e.shock_type, e.shock_type) }} | {{ {"sns_only": "SNSのみ", "sns_to_tier2": "SNS→Tier2", "sns_to_tier1": "SNS→Tier1", "tier1_direct": "Tier1直接", "no_coverage": "なし"}.get(e.diffusion_pattern, e.diffusion_pattern) }} | {{ e.summary }} |
+{% endfor %}
+
+---
+
+{% endif -%}
+
+{% if analysis.event_persistence -%}
+## イベント持続性
+
+| 銘柄 | 出現日数/観測日数 | SPP推移 | 最新SPP |
+|------|------------------|---------|---------|
+{% for ep in analysis.event_persistence -%}
+| {{ ep.ticker }} | {{ ep.days_appeared }}/{{ ep.total_days }}日 | {{ ep.spp_trend }} | {{ "%.2f"|format(ep.latest_spp) }} |
+{% endfor %}
+
+---
+
+{% endif -%}
+
+## 転換点候補
+
+{% if analysis.turning_point_candidates -%}
+{% for tp in analysis.turning_point_candidates -%}
+- {{ tp.description }}
+{% endfor %}
+{% else -%}
+転換点候補は検出されませんでした。
+{% endif %}
+
+---
+
+## 組織インパクト仮説
+
+{% if analysis.org_impact_hypotheses -%}
+{% for h in analysis.org_impact_hypotheses -%}
+### {{ loop.index }}. {{ h.hypothesis }}
+- **根拠**: {{ h.evidence }}
+{% if h.evidence_elements is defined and h.evidence_elements -%}
+- **根拠要素**:
+{% for elem in h.evidence_elements -%}
+  - {{ elem }}
+{% endfor -%}
+{% endif -%}
+{% if h.data_period is defined and h.data_period -%}
+- **データ期間**: {{ h.data_period }}
+{% endif -%}
+{% if h.confidence_note is defined and h.confidence_note -%}
+- **信頼度注記**: {{ h.confidence_note }}
+{% endif %}
+
+{% endfor -%}
+{% else -%}
+組織インパクト仮説は生成されませんでした。
+{% endif %}
+
+---
+
+{% if analysis.regime_history -%}
+## 市場レジーム推移
+
+| 日付 | レジーム | ボラティリティ | 下落比率 | 信頼度 |
+|------|----------|---------------|----------|--------|
+{% for r in analysis.regime_history -%}
+| {{ r.date }} | {{ {"normal": "平時", "high_vol": "高ボラ", "tightening": "引き締め"}.get(r.regime, r.regime) }} | {{ "%.1f"|format((r.avg_volatility or 0) * 100) }}% | {{ "%.0f"|format((r.declining_pct or 0) * 100) }}% | {{ "%.0f"|format((r.regime_confidence or 0) * 100) }}% |
+{% endfor %}
+
+---
+
+{% endif -%}
+
+{% if analysis.week_over_week -%}
+## 前週比較
+
+{% if analysis.week_over_week.available -%}
+> 比較期間: {{ analysis.week_over_week.previous_period }}
+
+{% if analysis.week_over_week.event_count_delta -%}
+**イベント件数**: 今週 {{ analysis.week_over_week.event_count_delta.current }} 件 / 前週 {{ analysis.week_over_week.event_count_delta.previous }} 件（差分 {{ "%+d"|format(analysis.week_over_week.event_count_delta.delta) }}）
+{% endif %}
+
+{% if analysis.week_over_week.regime_shift -%}
+{%- set rs = analysis.week_over_week.regime_shift -%}
+{%- set regime_ja = {"normal": "平時", "high_vol": "高ボラ", "tightening": "引き締め"} -%}
+**支配的レジーム**: {% if rs.changed %}{{ regime_ja.get(rs.previous_regime, rs.previous_regime) }} → {{ regime_ja.get(rs.current_regime, rs.current_regime) }}（変化あり）{% else %}{{ regime_ja.get(rs.current_regime, rs.current_regime) }}（変化なし）{% endif %}
+{% endif %}
+
+{% if analysis.week_over_week.shock_type_delta -%}
+### ショックタイプ増減
+
+| ショックタイプ | 今週 | 前週 | 差分 |
+|----------------|------|------|------|
+{% for st, d in analysis.week_over_week.shock_type_delta.items() -%}
+| {{ st }} | {{ d.current }} | {{ d.previous }} | {{ "%+d"|format(d.delta) }} |
+{% endfor %}
+{% endif %}
+
+{% if analysis.week_over_week.narrative_delta -%}
+### ナラティブ比率変化
+
+| カテゴリ | 今週平均 | 前週平均 | 差分(pt) |
+|----------|----------|----------|----------|
+{% for cat, d in analysis.week_over_week.narrative_delta.items() -%}
+| {{ cat }} | {{ "%.0f"|format(d.current_pct * 100) }}% | {{ "%.0f"|format(d.previous_pct * 100) }}% | {{ "%+.0f"|format(d.delta_pt * 100) }} |
+{% endfor %}
+{% endif %}
+{% else -%}
+前週データ不足 — 次週以降比較可能
+{% endif %}
+
+---
+
+{% endif -%}
+
+{% if analysis.regime_narrative_cross -%}
+## レジーム・ナラティブ同時変動
+
+> ※ 同時期の観測であり、因果関係を示すものではありません
+
+{% for f in analysis.regime_narrative_cross -%}
+- **{{ f.date }}**: {{ f.finding }}
+{% endfor %}
+
+---
+
+{% endif -%}
+
+{% if analysis.early_drift_candidates -%}
+## Early Drift（初動検出）
+
+> ※ 「誰も見ていないが動き始めた瞬間」の候補。全4条件を満たすイベントのみ。
+
+| 銘柄 | ナラティブ | カテゴリ比率 | z-score | 伝播 | 市場反応 | サマリー |
+|------|-----------|-------------|---------|------|---------|----------|
+{% for d in analysis.early_drift_candidates -%}
+| {{ d.ticker }} | {{ d.narrative_category }} | {{ "%.0f"|format(d.category_pct * 100) }}% | {{ "%.2f"|format(d.z_score) }} | {{ d.diffusion_pattern }} | 未反応 | {{ d.summary }} |
+{% endfor %}
+
+---
+
+{% endif -%}
+
+{% if analysis.bias_correction_actions -%}
+## 来週の監視比重提案
+
+{% for a in analysis.bias_correction_actions -%}
+### {{ loop.index }}. {{ a.action }}
+- **根拠**: {{ a.reason }}
+- **週平均ナラティブ比率**: {{ "%.0f"|format(a.current_pct * 100) }}%
+{% if a.recent_surge is defined and a.recent_surge -%}
+- **⚡ 急変フラグ**: 直近{{ "%.0f"|format(a.latest_pct * 100) }}%へ急変 — 動向注視を推奨
+{% endif %}
+
+{% endfor -%}
+
+---
+
+{% endif -%}
+
+*レポート生成日時: {{ generated_at }}*

@@ -296,3 +296,177 @@ class TestThemes:
         themes = db.get_themes(limit=10)
         momentums = [t["momentum"] for t in themes]
         assert momentums == sorted(momentums, reverse=True)
+
+
+# ---- Narrative Snapshots ----
+
+
+class TestNarrativeSnapshots:
+    def test_insert_and_query_snapshot(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        db.insert_narrative_snapshot(today, "AI/LLM/自動化", 3, 0.6, 5)
+        db.insert_narrative_snapshot(today, "規制/政策/地政学", 2, 0.4, 5)
+
+        history = db.get_narrative_history(days=1)
+        assert len(history) == 2
+        assert history[0]["category"] == "AI/LLM/自動化"
+        assert history[0]["event_pct"] == 0.6
+        assert history[1]["category"] == "規制/政策/地政学"
+
+    def test_upsert_updates_existing_snapshot(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        db.insert_narrative_snapshot(today, "AI/LLM/自動化", 3, 0.6, 5)
+        db.insert_narrative_snapshot(today, "AI/LLM/自動化", 4, 0.8, 5)
+
+        history = db.get_narrative_history(days=1)
+        ai_rows = [h for h in history if h["category"] == "AI/LLM/自動化"]
+        assert len(ai_rows) == 1
+        assert ai_rows[0]["event_count"] == 4
+        assert ai_rows[0]["event_pct"] == 0.8
+
+    def test_history_respects_days_filter(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        old_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+
+        db.insert_narrative_snapshot(today, "AI/LLM/自動化", 3, 0.6, 5)
+        db.insert_narrative_snapshot(old_date, "AI/LLM/自動化", 2, 0.5, 4)
+
+        history = db.get_narrative_history(days=7)
+        assert len(history) == 1
+        assert history[0]["date"] == today
+
+    def test_multiple_dates(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        db.insert_narrative_snapshot(today, "AI/LLM/自動化", 3, 0.75, 4)
+        db.insert_narrative_snapshot(yesterday, "AI/LLM/自動化", 2, 0.5, 4)
+        db.insert_narrative_snapshot(yesterday, "規制/政策/地政学", 2, 0.5, 4)
+
+        history = db.get_narrative_history(days=7)
+        assert len(history) == 3
+        dates = [h["date"] for h in history]
+        # Ordered by date DESC
+        assert dates[0] == today
+
+
+# ---- Enriched Events ----
+
+
+class TestEnrichedEvents:
+    def test_insert_and_query_enriched_event(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        event = {
+            "ticker": "NVDA",
+            "signal_type": "price_change",
+            "shock_type": "Tech shock",
+            "sis": 0.85,
+            "narrative_category": "AI/LLM/自動化",
+            "ai_centricity": 0.9,
+            "summary": "NVDA AI GPU surge",
+        }
+        db.insert_enriched_event(today, event)
+
+        history = db.get_enriched_events_history(days=1)
+        assert len(history) == 1
+        assert history[0]["ticker"] == "NVDA"
+        assert history[0]["shock_type"] == "Tech shock"
+        assert history[0]["sis"] == 0.85
+        assert history[0]["narrative_category"] == "AI/LLM/自動化"
+        assert history[0]["ai_centricity"] == 0.9
+
+    def test_upsert_updates_existing_event(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        event1 = {
+            "ticker": "NVDA",
+            "signal_type": "price_change",
+            "shock_type": "Tech shock",
+            "sis": 0.7,
+            "narrative_category": "AI/LLM/自動化",
+            "ai_centricity": 0.8,
+            "summary": "First run",
+        }
+        event2 = {
+            "ticker": "NVDA",
+            "signal_type": "price_change",
+            "shock_type": "Narrative shift",
+            "sis": 0.9,
+            "narrative_category": "半導体/供給網",
+            "ai_centricity": 0.5,
+            "summary": "Re-run with updated data",
+        }
+        db.insert_enriched_event(today, event1)
+        db.insert_enriched_event(today, event2)
+
+        history = db.get_enriched_events_history(days=1)
+        assert len(history) == 1
+        assert history[0]["shock_type"] == "Narrative shift"
+        assert history[0]["sis"] == 0.9
+
+    def test_multiple_events_same_date(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        events = [
+            {"ticker": "NVDA", "signal_type": "price_change", "shock_type": "Tech shock", "sis": 0.9, "narrative_category": "AI/LLM/自動化", "ai_centricity": 0.95, "summary": "AI surge"},
+            {"ticker": "CRWD", "signal_type": "volume_spike", "shock_type": "Regulation shock", "sis": 0.7, "narrative_category": "規制/政策/地政学", "ai_centricity": 0.1, "summary": "SEC probe"},
+        ]
+        for e in events:
+            db.insert_enriched_event(today, e)
+
+        history = db.get_enriched_events_history(days=1)
+        assert len(history) == 2
+        # Ordered by SIS desc
+        assert history[0]["sis"] >= history[1]["sis"]
+
+    def test_history_respects_days_filter(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        old_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+
+        db.insert_enriched_event(today, {"ticker": "NVDA", "signal_type": "price_change", "shock_type": "Tech shock", "sis": 0.8})
+        db.insert_enriched_event(old_date, {"ticker": "MSFT", "signal_type": "price_change", "shock_type": "Tech shock", "sis": 0.6})
+
+        history = db.get_enriched_events_history(days=7)
+        assert len(history) == 1
+        assert history[0]["ticker"] == "NVDA"
+
+    def test_evidence_score_columns(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        event = {
+            "ticker": "NVDA",
+            "signal_type": "price_change",
+            "shock_type": "Tech shock",
+            "sis": 0.85,
+            "narrative_category": "AI/LLM/自動化",
+            "ai_centricity": 0.9,
+            "summary": "AI GPU surge",
+            "evidence_score": 0.75,
+            "market_evidence": 0.8,
+            "media_evidence": 0.6,
+            "official_evidence": 0.5,
+        }
+        db.insert_enriched_event(today, event)
+
+        history = db.get_enriched_events_history(days=1)
+        assert len(history) == 1
+        assert history[0]["evidence_score"] == 0.75
+        assert history[0]["market_evidence"] == 0.8
+        assert history[0]["media_evidence"] == 0.6
+        assert history[0]["official_evidence"] == 0.5
+
+    def test_evidence_score_upsert(self, db: Database) -> None:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        event1 = {
+            "ticker": "NVDA", "signal_type": "price_change",
+            "shock_type": "Tech shock", "sis": 0.7,
+            "evidence_score": 0.3,
+        }
+        event2 = {
+            "ticker": "NVDA", "signal_type": "price_change",
+            "shock_type": "Tech shock", "sis": 0.9,
+            "evidence_score": 0.8,
+        }
+        db.insert_enriched_event(today, event1)
+        db.insert_enriched_event(today, event2)
+
+        history = db.get_enriched_events_history(days=1)
+        assert len(history) == 1
+        assert history[0]["evidence_score"] == 0.8

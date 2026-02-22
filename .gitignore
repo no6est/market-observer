@@ -19,7 +19,7 @@ env/
 *.swo
 
 # Data & secrets
-data/*.db
+*.db
 .env
 *.log
 

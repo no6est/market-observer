@@ -1,0 +1,260 @@
+# 月次ナラティブ分析レポート - {{ date }}
+
+> 分析期間: {{ analysis.period }}
+
+---
+
+## 1. ナラティブ・ライフサイクル
+
+{% if analysis.narrative_lifecycle -%}
+| カテゴリ | 活動日数 | ピーク | ピーク日 | 収束日数 | 月平均 | 持続率 | 軌道 |
+|----------|----------|--------|----------|----------|--------|--------|------|
+{% for cat, data in analysis.narrative_lifecycle.items() -%}
+| {{ cat }} | {{ data.active_days }} | {{ "%.0f"|format(data.peak_pct * 100) }}% | {{ data.peak_date }} | {{ data.convergence_days }} | {{ "%.0f"|format(data.avg_pct * 100) }}% | {{ "%.0f"|format(data.persistence_ratio * 100) }}% | {{ trajectory_ja.get(data.trajectory, data.trajectory) }} |
+{% endfor %}
+
+{% if analysis.lifecycle_stats -%}
+### ライフサイクル統計
+
+| 指標 | 値 |
+|------|-----|
+| 分析日数 | {{ analysis.lifecycle_stats.period_days }}日 |
+| 平均活動期間 | {{ analysis.lifecycle_stats.avg_lifespan_days }}日 |
+| 平均収束期間 | {{ analysis.lifecycle_stats.avg_convergence_days }}日 |
+{% if analysis.lifecycle_stats.persistence_distribution -%}
+{% for label, count in analysis.lifecycle_stats.persistence_distribution.items() -%}
+| {{ label }} | {{ count }}カテゴリ |
+{% endfor -%}
+{% endif -%}
+{% endif -%}
+{% else -%}
+ナラティブ・ライフサイクルのデータはありません。
+{% endif %}
+
+---
+
+## 2. 仮説レトロスペクティブ
+
+{% if analysis.hypothesis_scorecard and analysis.hypothesis_scorecard.total_evaluated -%}
+### スコアカード
+
+| 指標 | 値 |
+|------|-----|
+| 評価済み | {{ analysis.hypothesis_scorecard.total_evaluated }} |
+| 確認 | {{ analysis.hypothesis_scorecard.confirmed }} |
+| 期限切れ | {{ analysis.hypothesis_scorecard.expired }} |
+| 判定不能 | {{ analysis.hypothesis_scorecard.inconclusive }} |
+| 確認率 | {{ "%.0f"|format(analysis.hypothesis_scorecard.confirmation_rate * 100) }}% |
+| 未評価（保留中） | {{ analysis.hypothesis_scorecard.pending }} |
+
+{% if analysis.hypothesis_evaluations -%}
+### 個別評価結果
+
+{% for h in analysis.hypothesis_evaluations -%}
+- **{{ h.date }}** {{ h.ticker or "" }}: {{ (h.hypothesis or "")[:80] }}{% if (h.hypothesis or "")|length > 80 %}...{% endif %} → {{ eval_ja.get(h.evaluation, h.evaluation) }}
+{% endfor %}
+{% endif -%}
+{% else -%}
+評価対象の仮説はありませんでした。
+{% endif %}
+
+---
+
+## 3. 市場レジーム推移
+
+{% if analysis.regime_arc -%}
+{% if analysis.regime_arc.regime_composition -%}
+### レジーム構成
+
+| レジーム | 日数 | 割合 |
+|----------|------|------|
+{% for regime, comp in analysis.regime_arc.regime_composition.items() -%}
+| {{ regime_ja.get(regime, regime) }} | {{ comp.days }}日 | {{ "%.0f"|format(comp.pct * 100) }}% |
+{% endfor %}
+{% endif %}
+
+| 指標 | 値 |
+|------|-----|
+| 支配的レジーム | {{ regime_ja.get(analysis.regime_arc.dominant, analysis.regime_arc.dominant) }} |
+| 安定度 | {{ "%.0f"|format(analysis.regime_arc.stability_score * 100) }}% |
+| ボラティリティ傾向 | {{ analysis.regime_arc.volatility_trend }} |
+
+{% if analysis.regime_arc.transitions -%}
+### 遷移イベント
+
+{% for t in analysis.regime_arc.transitions -%}
+- **{{ t.date }}**: {{ regime_ja.get(t.from, t.from) }} → {{ regime_ja.get(t.to, t.to) }}
+{% endfor %}
+{% endif %}
+
+{% if analysis.regime_history -%}
+### 日次レジーム
+
+| 日付 | レジーム | ボラティリティ | 下落比率 | 信頼度 |
+|------|----------|---------------|----------|--------|
+{% for r in analysis.regime_history -%}
+| {{ r.date }} | {{ regime_ja.get(r.regime, r.regime) }} | {{ "%.1f"|format((r.avg_volatility or 0) * 100) }}% | {{ "%.0f"|format((r.declining_pct or 0) * 100) }}% | {{ "%.0f"|format((r.regime_confidence or 0) * 100) }}% |
+{% endfor %}
+{% endif -%}
+{% else -%}
+レジーム推移のデータはありません。
+{% endif %}
+
+---
+
+## 4. 構造的持続性
+
+{% if analysis.structural_persistence -%}
+{% if analysis.structural_persistence.core_tickers -%}
+### コア銘柄（出現率60%以上）
+
+| 銘柄 | 出現日数/観測日数 | 出現率 | SPP推移 | 最新SPP |
+|------|------------------|--------|---------|---------|
+{% for ep in analysis.structural_persistence.core_tickers -%}
+| {{ ep.ticker }} | {{ ep.days_appeared }}/{{ ep.total_days }}日 | {{ "%.0f"|format(ep.appearance_ratio * 100) }}% | {{ ep.spp_trend }} | {{ "%.2f"|format(ep.latest_spp) }} |
+{% endfor %}
+{% else -%}
+コア銘柄（60%以上出現）はありませんでした。
+{% endif %}
+
+{% if analysis.structural_persistence.transient_tickers -%}
+### 一時的銘柄（出現率20%未満）
+
+{{ analysis.structural_persistence.transient_tickers | map(attribute='ticker') | join(', ') }}
+{% endif %}
+
+**ターンオーバー率**: {{ "%.0f"|format(analysis.structural_persistence.turnover_rate * 100) }}%
+{% else -%}
+構造的持続性のデータはありません。
+{% endif %}
+
+---
+
+## 5. 前月比較
+
+{% if analysis.month_over_month.available -%}
+> 比較期間: {{ analysis.month_over_month.previous_period }}
+
+{% if analysis.month_over_month.event_count_delta -%}
+**イベント件数**: 今月 {{ analysis.month_over_month.event_count_delta.current }} 件 / 前月 {{ analysis.month_over_month.event_count_delta.previous }} 件（差分 {{ "%+d"|format(analysis.month_over_month.event_count_delta.delta) }}）
+{% endif %}
+
+{% if analysis.month_over_month.regime_comparison -%}
+{%- set rc = analysis.month_over_month.regime_comparison -%}
+**支配的レジーム**: {% if rc.changed %}{{ regime_ja.get(rc.previous_regime, rc.previous_regime) }} → {{ regime_ja.get(rc.current_regime, rc.current_regime) }}（変化あり）{% else %}{{ regime_ja.get(rc.current_regime, rc.current_regime) }}（変化なし）{% endif %}
+{% endif %}
+
+{% if analysis.month_over_month.narrative_delta -%}
+### ナラティブ比率変化
+
+| カテゴリ | 今月平均 | 前月平均 | 差分(pt) |
+|----------|----------|----------|----------|
+{% for cat, d in analysis.month_over_month.narrative_delta.items() -%}
+| {{ cat }} | {{ "%.0f"|format(d.current_pct * 100) }}% | {{ "%.0f"|format(d.previous_pct * 100) }}% | {{ "%+.0f"|format(d.delta_pt * 100) }} |
+{% endfor %}
+{% endif %}
+
+{% if analysis.month_over_month.shock_type_delta -%}
+### ショックタイプ増減
+
+| ショックタイプ | 今月 | 前月 | 差分 |
+|----------------|------|------|------|
+{% for st, d in analysis.month_over_month.shock_type_delta.items() -%}
+| {{ st }} | {{ d.current }} | {{ d.previous }} | {{ "%+d"|format(d.delta) }} |
+{% endfor %}
+{% endif %}
+
+{% if analysis.month_over_month.ticker_turnover -%}
+### 銘柄入替
+
+{% if analysis.month_over_month.ticker_turnover.new -%}
+- **新規出現**: {{ analysis.month_over_month.ticker_turnover.new | join(', ') }}
+{% endif -%}
+{% if analysis.month_over_month.ticker_turnover.gone -%}
+- **消失**: {{ analysis.month_over_month.ticker_turnover.gone | join(', ') }}
+{% endif -%}
+{% if analysis.month_over_month.ticker_turnover.continued -%}
+- **継続**: {{ analysis.month_over_month.ticker_turnover.continued | join(', ') }}
+{% endif -%}
+{% endif %}
+{% else -%}
+前月データ不足 — 翌月以降比較可能
+{% endif %}
+
+---
+
+## 6. ショックタイプ・伝播構造（月間）
+
+{% if analysis.shock_type_distribution -%}
+### ショック分布
+
+| ショックタイプ | 件数 |
+|----------------|------|
+{% for shock_type, count in analysis.shock_type_distribution.items() -%}
+| {{ shock_type }} | {{ count }} |
+{% endfor %}
+{% else -%}
+ショックタイプのデータはありません。
+{% endif %}
+
+{% if analysis.propagation_structure -%}
+### 伝播パターン
+
+| 伝播パターン | 件数 |
+|--------------|------|
+{% for pattern, count in analysis.propagation_structure.items() -%}
+| {{ pattern_ja.get(pattern, pattern) }} | {{ count }} |
+{% endfor %}
+{% else -%}
+伝播パターンのデータはありません。
+{% endif %}
+
+---
+
+## 7. 来月の注目ポイント
+
+{% if analysis.forward_posture -%}
+{% if analysis.forward_posture.attention_reallocation -%}
+### 監視比重調整案
+
+{% for a in analysis.forward_posture.attention_reallocation -%}
+- **{{ a.category }}**: {{ a.action }} — {{ a.reason }}
+{% endfor %}
+{% endif %}
+
+{% if analysis.forward_posture.watch_tickers -%}
+### ウォッチ銘柄
+
+{% for w in analysis.forward_posture.watch_tickers -%}
+- **{{ w.ticker }}**: {{ w.reason }}
+{% endfor %}
+{% endif %}
+
+{% if analysis.forward_posture.regime_outlook -%}
+### レジーム見通し
+
+{{ analysis.forward_posture.regime_outlook }}
+{% endif -%}
+{% else -%}
+注目ポイントのデータはありません。
+{% endif %}
+
+---
+
+## 8. 月間ナラティブ推移
+
+{% if analysis.narrative_trend -%}
+{% for day in analysis.narrative_trend -%}
+### {{ day.date }}
+{% for cat, pct in day.categories.items() -%}
+- {{ cat }}: {{ "%.0f"|format(pct * 100) }}%
+{% endfor %}
+
+{% endfor -%}
+{% else -%}
+ナラティブ推移のデータはありません。
+{% endif %}
+
+---
+
+*レポート生成日時: {{ generated_at }}*
