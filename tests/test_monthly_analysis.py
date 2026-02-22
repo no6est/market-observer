@@ -59,6 +59,11 @@ class TestComputeMonthlyAnalysis:
             "extinction_chains",
             "drift_evaluation",
             "response_profile",
+            # v8: direction-aware market response
+            "direction_analysis",
+            "regime_cross",
+            "exhaustion",
+            "exhaustion_evaluation",
         }
         assert set(result.keys()) == expected_keys
 

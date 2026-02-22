@@ -355,6 +355,30 @@ class Database:
             logger.info("Cleared %d recent anomalies for fresh detection", deleted)
         return deleted
 
+    def get_anomalies_by_date_range(
+        self, ticker: str, start_date: str, end_date: str,
+    ) -> list[dict[str, Any]]:
+        """Get anomalies for a ticker within a date range.
+
+        Args:
+            ticker: Ticker symbol.
+            start_date: Start date string (YYYY-MM-DD).
+            end_date: End date string (YYYY-MM-DD).
+
+        Returns:
+            List of anomaly dicts ordered by detected_at.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT ticker, signal_type, score, z_score, value,
+                          mean, std, summary, detected_at
+                   FROM anomalies
+                   WHERE ticker = ? AND detected_at >= ? AND detected_at <= ?
+                   ORDER BY detected_at""",
+                (ticker, start_date, end_date + " 23:59:59"),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     # ---- Themes ----
 
     def upsert_theme(self, theme: dict[str, Any]) -> None:
@@ -464,7 +488,7 @@ class Database:
                           evidence_score, market_evidence,
                           media_evidence, official_evidence,
                           tier1_count, tier2_count, sns_count,
-                          diffusion_pattern, spp
+                          diffusion_pattern, spp, regime
                    FROM enriched_events
                    WHERE date >= ? AND date <= ?
                    ORDER BY date DESC, sis DESC""",

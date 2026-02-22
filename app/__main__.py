@@ -785,13 +785,17 @@ def run_monthly(
 
         from app.database import Database
         from app.enrichers.monthly_analysis import compute_monthly_analysis
+        from app.llm.gemini import create_gemini_client
         from app.reporter.daily_report import generate_monthly_report
 
         db = Database(cfg.database_path)
+        gemini_client = create_gemini_client(cfg.gemini.api_key, cfg.gemini.model)
 
         today = date or datetime.now().strftime("%Y-%m-%d")
 
-        analysis = compute_monthly_analysis(db, days=30, reference_date=today)
+        analysis = compute_monthly_analysis(
+            db, days=30, reference_date=today, llm_client=gemini_client,
+        )
 
         report_md = generate_monthly_report(analysis=analysis, date=today)
 
