@@ -348,7 +348,7 @@ def main() -> None:
     posts = [dict(r) for r in rows]
     logger.info("Context: %d articles, %d posts", len(articles), len(posts))
 
-    tickers = cfg.tickers
+    tickers = cfg.active_tickers
     total_events = 0
 
     for target_date in sorted(missing):
@@ -362,7 +362,7 @@ def main() -> None:
             anomalies.extend(detected)
 
         # Enrich
-        enriched = enrich_anomalies(anomalies, articles, posts, cfg.sector_map, db=db, up_to_date=target_date)
+        enriched = enrich_anomalies(anomalies, articles, posts, cfg.active_sector_map, db=db, up_to_date=target_date)
 
         # Persist
         event_count = save_enriched_events(db, target_date, enriched)

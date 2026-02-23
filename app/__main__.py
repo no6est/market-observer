@@ -45,13 +45,13 @@ def _run_collectors(config):
     with console.status("[bold green]価格データ収集中..."):
         try:
             collector = create_price_collector()
-            results["price_data"] = collector.collect(config.tickers, period="1mo")
+            results["price_data"] = collector.collect(config.active_tickers, period="1mo")
         except Exception:
             logger.exception("Price collection failed")
 
     with console.status("[bold green]RSS記事収集中..."):
         try:
-            results["articles"] = collect_rss(config.rss_feeds)
+            results["articles"] = collect_rss(config.active_rss_feeds)
         except Exception:
             logger.exception("RSS collection failed")
 
@@ -85,17 +85,17 @@ def _run_detectors(config, db):
     anomalies = []
 
     try:
-        anomalies.extend(detect_price_anomalies(db, config.tickers, config.detection))
+        anomalies.extend(detect_price_anomalies(db, config.active_tickers, config.detection))
     except Exception:
         logger.exception("Price anomaly detection failed")
 
     try:
-        anomalies.extend(detect_volume_anomalies(db, config.tickers, config.detection))
+        anomalies.extend(detect_volume_anomalies(db, config.active_tickers, config.detection))
     except Exception:
         logger.exception("Volume anomaly detection failed")
 
     try:
-        anomalies.extend(detect_mention_anomalies(db, config.tickers, config.detection))
+        anomalies.extend(detect_mention_anomalies(db, config.active_tickers, config.detection))
     except Exception:
         logger.exception("Mention anomaly detection failed")
 
@@ -229,11 +229,11 @@ def _enrich_events(config, anomalies, articles, posts, gemini_client=None, db=No
     from app.enrichers.media_tier import compute_media_tier_distribution
     from app.enrichers.spp import compute_spp
 
-    propagation_list = find_propagation(anomalies, config.sector_map, db=db)
+    propagation_list = find_propagation(anomalies, config.active_sector_map, db=db)
 
     # Build reverse lookup: ticker -> sector
     ticker_to_sector = {}
-    for sector, members in config.sector_map.items():
+    for sector, members in config.active_sector_map.items():
         for t in members:
             ticker_to_sector[t] = sector
 
@@ -319,7 +319,7 @@ def _enrich_events(config, anomalies, articles, posts, gemini_client=None, db=No
         st = ticker_to_shock.get(p["source_ticker"], "")
         if st and db is not None:
             sector_key = None
-            for sk, members in config.sector_map.items():
+            for sk, members in config.active_sector_map.items():
                 if p["source_ticker"] in members:
                     sector_key = sk
                     break
@@ -361,7 +361,7 @@ def _run_enrichers(config, db, anomalies, articles, posts, gemini_client=None):
         logger.exception("Hypothesis generation failed")
 
     try:
-        enriched["propagation"] = find_propagation(anomalies, config.sector_map, db=db)
+        enriched["propagation"] = find_propagation(anomalies, config.active_sector_map, db=db)
     except Exception:
         logger.exception("Propagation analysis failed")
 
@@ -492,6 +492,30 @@ def run_daily(
             narrative_basis=cfg.narrative.narrative_basis,
             reference_date=_today,
         )
+
+        # GLOBAL mode: compute market-specific narrative concentration
+        narrative_index_us = None
+        narrative_index_jp = None
+        if cfg.market_scope == "GLOBAL":
+            from app.utils.market_utils import split_by_market
+            us_events, jp_events = split_by_market(enriched_events)
+            if us_events:
+                narrative_index_us = compute_narrative_concentration(
+                    us_events, db,
+                    ai_warning_pct=cfg.narrative.overheat_ai_pct,
+                    concentration_warning_pct=cfg.narrative.concentration_warning_pct,
+                    narrative_basis=cfg.narrative.narrative_basis,
+                    reference_date=_today,
+                )
+            if jp_events:
+                narrative_index_jp = compute_narrative_concentration(
+                    jp_events, db,
+                    ai_warning_pct=cfg.narrative.overheat_ai_pct,
+                    concentration_warning_pct=cfg.narrative.concentration_warning_pct,
+                    narrative_basis=cfg.narrative.narrative_basis,
+                    reference_date=_today,
+                )
+
         non_ai_highlights = extract_non_ai_highlights(
             enriched_events,
             ai_threshold=cfg.narrative.ai_threshold,
@@ -532,6 +556,26 @@ def run_daily(
             db.insert_regime_snapshot(_today, regime_info)
         except Exception:
             logger.debug("Failed to save regime snapshot")
+
+        # GLOBAL mode: compute market-specific regime info
+        regime_info_us = None
+        regime_info_jp = None
+        if cfg.market_scope == "GLOBAL":
+            try:
+                regime_info_us = detect_market_regime(
+                    db, reference_date=_today,
+                    tickers=list(cfg.tickers),
+                    vol_threshold=cfg.regime.vol_threshold,
+                    declining_threshold=cfg.regime.declining_threshold,
+                )
+                regime_info_jp = detect_market_regime(
+                    db, reference_date=_today,
+                    tickers=list(cfg.jp_tickers),
+                    vol_threshold=cfg.regime.vol_threshold,
+                    declining_threshold=cfg.regime.declining_threshold,
+                )
+            except Exception:
+                logger.debug("Failed to compute market-specific regime")
 
         # Echo chamber correction
         echo_info = detect_echo_chamber(
@@ -665,12 +709,17 @@ def run_daily(
             tracking_queries=tracking_queries,
             date=today,
             narrative_index=narrative_index,
+            narrative_index_us=narrative_index_us,
+            narrative_index_jp=narrative_index_jp,
             non_ai_highlights=non_ai_highlights,
             overheat_alert=overheat_alert,
             narrative_health=narrative_health,
             regime_info=regime_info,
+            regime_info_us=regime_info_us,
+            regime_info_jp=regime_info_jp,
             echo_info=echo_info,
             early_drift_candidates=early_drift_candidates,
+            market_scope=cfg.market_scope,
         )
 
         output_dir = Path(cfg.report.output_dir)
@@ -757,7 +806,7 @@ def run_weekly(
         except Exception:
             logger.debug("Failed to persist early drift candidates")
 
-        report_md = generate_weekly_report(analysis=analysis, date=today)
+        report_md = generate_weekly_report(analysis=analysis, date=today, market_scope=cfg.market_scope)
 
         report_path = output_dir / f"{today}_weekly.md"
         report_path.write_text(report_md, encoding="utf-8")
@@ -795,9 +844,10 @@ def run_monthly(
 
         analysis = compute_monthly_analysis(
             db, days=30, reference_date=today, llm_client=gemini_client,
+            market_scope=cfg.market_scope,
         )
 
-        report_md = generate_monthly_report(analysis=analysis, date=today)
+        report_md = generate_monthly_report(analysis=analysis, date=today, market_scope=cfg.market_scope)
 
         output_dir = Path(cfg.report.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)

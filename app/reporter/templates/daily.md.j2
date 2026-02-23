@@ -7,7 +7,7 @@
 | 順位 | 銘柄 | シグナル | スコア | サマリー |
 |------|------|----------|--------|----------|
 {% for a in anomalies -%}
-| {{ loop.index }} | {{ a.ticker }} | {{ {"price_change": "価格変動", "volume_spike": "出来高急増", "mention_surge": "言及急増"}.get(a.signal_type, a.signal_type) }} | {{ "%.2f"|format(a.score) }} | {{ a.summary | default("N/A") }} |
+| {{ loop.index }} | {{ a.ticker|ticker_name }} | {{ {"price_change": "価格変動", "volume_spike": "出来高急増", "mention_surge": "言及急増"}.get(a.signal_type, a.signal_type) }} | {{ "%.2f"|format(a.score) }} | {{ a.summary | default("N/A") }} |
 {% endfor -%}
 {% if not anomalies -%}
 | - | - | - | - | 異常は検出されませんでした |
@@ -50,6 +50,9 @@
 
 {% for h in hypotheses -%}
 ### {{ loop.index }}. {{ h.hypothesis }}
+{% if h.hypothesis_body | default("") %}
+{{ h.hypothesis_body }}
+{% endif %}
 - **確信度**: {{ "%.0f"|format(h.confidence * 100) if h.confidence is defined else "N/A" }}%
 - **状況**: {{ h.context | default("N/A") }}
 {% if h.evidence_titles | default([]) -%}
@@ -83,7 +86,7 @@
 ## 波及候補
 
 {% for p in propagation -%}
-### {{ p.source_ticker }} → {{ p.related_tickers | join(", ") }}
+### {{ p.source_ticker|ticker_name }} → {{ p.related_tickers | map("ticker_name") | join(", ") }}
 - **セクター**: {{ p.sector | default("N/A") }}
 - **理由**: {{ p.reason | default("N/A") }}
 

@@ -204,6 +204,34 @@ class TestDetectMarketRegime:
         if result["avg_volatility"] >= 0.01:
             assert result["regime"] in ("high_vol", "tightening")
 
+    def test_tickers_parameter_filters_data(self) -> None:
+        """When tickers=['AAPL'] is passed, only AAPL data is used (not MSFT)."""
+        aapl_prices = _generate_stable_prices("AAPL", daily_move=0.001)
+        msft_prices = _generate_volatile_prices("MSFT", swing=0.08, declining=True)
+        db = _make_db(aapl_prices + msft_prices)
+
+        # Without tickers filter: both AAPL and MSFT are used
+        result_all = detect_market_regime(db, reference_date="2026-01-25")
+        assert "AAPL" in result_all["details"]["ticker_volatilities"]
+        assert "MSFT" in result_all["details"]["ticker_volatilities"]
+
+        # With tickers=['AAPL']: only AAPL is used
+        result_filtered = detect_market_regime(
+            db, reference_date="2026-01-25", tickers=["AAPL"]
+        )
+        assert "AAPL" in result_filtered["details"]["ticker_volatilities"]
+        assert "MSFT" not in result_filtered["details"]["ticker_volatilities"]
+
+        # Result must still be a valid regime dict
+        assert result_filtered["regime"] in ("normal", "high_vol", "tightening")
+        assert "avg_volatility" in result_filtered
+        assert "declining_pct" in result_filtered
+        assert "regime_confidence" in result_filtered
+        assert 0.0 <= result_filtered["regime_confidence"] <= 1.0
+
+        # AAPL is stable, so filtered result should be 'normal'
+        assert result_filtered["regime"] == "normal"
+
 
 # ---------------------------------------------------------------------------
 # get_spp_weights

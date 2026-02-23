@@ -66,19 +66,23 @@ def detect_market_regime(
     db: Any,
     reference_date: str | None = None,
     *,
+    tickers: list[str] | None = None,
     vol_threshold: float = _DEFAULT_VOL_THRESHOLD,
     declining_threshold: float = _DEFAULT_DECLINING_THRESHOLD,
 ) -> dict[str, Any]:
     """Detect the current market regime from realized volatility.
 
     Uses price_data stored in *db* to compute a VIX-like proxy based on
-    realized volatility of all monitored tickers over 20 trading days.
+    realized volatility of monitored tickers over 20 trading days.
 
     Args:
         db: Database instance (must expose ``_connect()`` context manager
             and ``price_data`` table).
         reference_date: ISO date string (``YYYY-MM-DD``).  Defaults to
             today (UTC) when ``None``.
+        tickers: Optional list of ticker symbols to analyse.  When
+            provided, only these tickers are used instead of querying
+            all tickers from the database.
         vol_threshold: Annualized volatility threshold separating
             ``normal`` from ``high_vol`` / ``tightening``.
         declining_threshold: Fraction of tickers that must be declining
@@ -91,7 +95,8 @@ def detect_market_regime(
     if reference_date is None:
         reference_date = datetime.utcnow().strftime("%Y-%m-%d")
 
-    tickers = _get_all_tickers(db, reference_date)
+    if tickers is None:
+        tickers = _get_all_tickers(db, reference_date)
     if not tickers:
         logger.warning("No tickers found in price_data; defaulting to 'normal' regime")
         return _build_result("normal", 0.0, 0.0, 0.0, {}, {})

@@ -1,4 +1,8 @@
-# 週次メタ分析レポート - {{ date }}
+{# Market tag macro for GLOBAL mode #}
+{% macro market_tag(ticker) -%}
+{% if market_scope == "GLOBAL" %}{% if ticker.endswith(".T") %}[JP]{% else %}[US]{% endif %} {% endif %}
+{%- endmacro %}
+# 週次メタ分析レポート - {{ date }}{% if market_scope == "GLOBAL" %} (GLOBAL){% elif market_scope == "JP" %} (JP){% endif %}
 
 > 分析期間: {{ analysis.period }}
 
@@ -88,7 +92,7 @@
 
 {% if analysis.non_ai_highlights -%}
 {% for h in analysis.non_ai_highlights -%}
-### {{ loop.index }}. {{ h.ticker }}
+### {{ loop.index }}. {{ h.ticker|ticker_name }}
 - **サマリー**: {{ h.summary }}
 - **スコア**: {{ "%.2f"|format(h.score) }}
 - **ナラティブ分類**: {{ h.narrative_category }}
@@ -110,7 +114,7 @@
 | 順位 | 銘柄 | SPP | ショックタイプ | 伝播パターン | サマリー |
 |------|------|-----|----------------|--------------|----------|
 {% for e in analysis.spp_top3 -%}
-| {{ loop.index }} | {{ e.ticker }} | {{ "%.2f"|format(e.spp) }} | {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(e.shock_type, e.shock_type) }} | {{ {"sns_only": "SNSのみ", "sns_to_tier2": "SNS→Tier2", "sns_to_tier1": "SNS→Tier1", "tier1_direct": "Tier1直接", "no_coverage": "なし"}.get(e.diffusion_pattern, e.diffusion_pattern) }} | {{ e.summary }} |
+| {{ loop.index }} | {{ e.ticker|ticker_name }} | {{ "%.2f"|format(e.spp) }} | {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(e.shock_type, e.shock_type) }} | {{ {"sns_only": "SNSのみ", "sns_to_tier2": "SNS→Tier2", "sns_to_tier1": "SNS→Tier1", "tier1_direct": "Tier1直接", "no_coverage": "なし"}.get(e.diffusion_pattern, e.diffusion_pattern) }} | {{ e.summary }} |
 {% endfor %}
 
 ---
@@ -123,7 +127,7 @@
 | 銘柄 | 出現日数/観測日数 | SPP推移 | 最新SPP |
 |------|------------------|---------|---------|
 {% for ep in analysis.event_persistence -%}
-| {{ ep.ticker }} | {{ ep.days_appeared }}/{{ ep.total_days }}日 | {{ ep.spp_trend }} | {{ "%.2f"|format(ep.latest_spp) }} |
+| {{ market_tag(ep.ticker) }}{{ ep.ticker|ticker_name }} | {{ ep.days_appeared }}/{{ ep.total_days }}日 | {{ ep.spp_trend }} | {{ "%.2f"|format(ep.latest_spp) }} |
 {% endfor %}
 
 ---
@@ -245,7 +249,7 @@
 | 銘柄 | ナラティブ | カテゴリ比率 | z-score | 伝播 | 市場反応 | サマリー |
 |------|-----------|-------------|---------|------|---------|----------|
 {% for d in analysis.early_drift_candidates -%}
-| {{ d.ticker }} | {{ d.narrative_category }} | {{ "%.0f"|format(d.category_pct * 100) }}% | {{ "%.2f"|format(d.z_score) }} | {{ d.diffusion_pattern }} | 未反応 | {{ d.summary }} |
+| {{ market_tag(d.ticker) }}{{ d.ticker|ticker_name }} | {{ d.narrative_category }} | {{ "%.0f"|format(d.category_pct * 100) }}% | {{ "%.2f"|format(d.z_score) }} | {{ d.diffusion_pattern }} | 未反応 | {{ d.summary }} |
 {% endfor %}
 
 ---

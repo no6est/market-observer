@@ -1,4 +1,8 @@
-# 月次ナラティブ分析レポート - {{ date }}
+{# Market tag macro for GLOBAL mode #}
+{% macro market_tag(ticker) -%}
+{% if market_scope == "GLOBAL" %}{% if ticker.endswith(".T") %}[JP]{% else %}[US]{% endif %} {% endif %}
+{%- endmacro %}
+# 月次ナラティブ分析レポート - {{ date }}{% if market_scope == "GLOBAL" %} (GLOBAL){% elif market_scope == "JP" %} (JP){% endif %}
 
 > 分析期間: {{ analysis.period }}
 
@@ -51,7 +55,7 @@
 ### 個別評価結果
 
 {% for h in analysis.hypothesis_evaluations -%}
-- **{{ h.date }}** {{ h.ticker or "" }}: {{ (h.hypothesis or "")[:80] }}{% if (h.hypothesis or "")|length > 80 %}...{% endif %} → {{ eval_ja.get(h.evaluation, h.evaluation) }}
+- **{{ h.date }}** {{ (h.ticker or "")|ticker_name }}: {{ (h.hypothesis or "")[:80] }}{% if (h.hypothesis or "")|length > 80 %}...{% endif %} → {{ eval_ja.get(h.evaluation, h.evaluation) }}
 {% endfor %}
 {% endif -%}
 {% else -%}
@@ -111,7 +115,7 @@
 | 銘柄 | 出現日数/観測日数 | 出現率 | SPP推移 | 最新SPP |
 |------|------------------|--------|---------|---------|
 {% for ep in analysis.structural_persistence.core_tickers -%}
-| {{ ep.ticker }} | {{ ep.days_appeared }}/{{ ep.total_days }}日 | {{ "%.0f"|format(ep.appearance_ratio * 100) }}% | {{ ep.spp_trend }} | {{ "%.2f"|format(ep.latest_spp) }} |
+| {{ market_tag(ep.ticker) }}{{ ep.ticker|ticker_name }} | {{ ep.days_appeared }}/{{ ep.total_days }}日 | {{ "%.0f"|format(ep.appearance_ratio * 100) }}% | {{ ep.spp_trend }} | {{ "%.2f"|format(ep.latest_spp) }} |
 {% endfor %}
 {% else -%}
 コア銘柄（60%以上出現）はありませんでした。
@@ -120,7 +124,7 @@
 {% if analysis.structural_persistence.transient_tickers -%}
 ### 一時的銘柄（出現率20%未満）
 
-{{ analysis.structural_persistence.transient_tickers | map(attribute='ticker') | join(', ') }}
+{{ analysis.structural_persistence.transient_tickers | map(attribute='ticker') | map("ticker_name") | join(', ') }}
 {% endif %}
 
 **ターンオーバー率**: {{ "%.0f"|format(analysis.structural_persistence.turnover_rate * 100) }}%
@@ -168,13 +172,13 @@
 ### 銘柄入替
 
 {% if analysis.month_over_month.ticker_turnover.new -%}
-- **新規出現**: {{ analysis.month_over_month.ticker_turnover.new | join(', ') }}
+- **新規出現**: {{ analysis.month_over_month.ticker_turnover.new | map("ticker_name") | join(', ') }}
 {% endif -%}
 {% if analysis.month_over_month.ticker_turnover.gone -%}
-- **消失**: {{ analysis.month_over_month.ticker_turnover.gone | join(', ') }}
+- **消失**: {{ analysis.month_over_month.ticker_turnover.gone | map("ticker_name") | join(', ') }}
 {% endif -%}
 {% if analysis.month_over_month.ticker_turnover.continued -%}
-- **継続**: {{ analysis.month_over_month.ticker_turnover.continued | join(', ') }}
+- **継続**: {{ analysis.month_over_month.ticker_turnover.continued | map("ticker_name") | join(', ') }}
 {% endif -%}
 {% endif %}
 {% else -%}
@@ -226,7 +230,7 @@
 ### ウォッチ銘柄
 
 {% for w in analysis.forward_posture.watch_tickers -%}
-- **{{ w.ticker }}**: {{ w.reason }}
+- **{{ w.ticker|ticker_name }}**: {{ w.reason }}
 {% endfor %}
 {% endif %}
 
@@ -299,7 +303,7 @@
 | 銘柄 | 前月SPP | 今月SPP | 価格変化 | ナラティブシェア変化 | 判定 |
 |------|---------|---------|----------|---------------------|------|
 {% for f in analysis.watch_ticker_followup.followups -%}
-| {{ f.ticker }} | {{ "%.2f"|format(f.prev_spp) }} | {{ "%.2f"|format(f.curr_spp) }} | {{ "%+.1f"|format(f.price_change_pct) }}% | {{ "%+.3f"|format(f.narrative_share_change) }} | {{ f.outcome }} |
+| {{ market_tag(f.ticker) }}{{ f.ticker|ticker_name }} | {{ "%.2f"|format(f.prev_spp) }} | {{ "%.2f"|format(f.curr_spp) }} | {{ "%+.1f"|format(f.price_change_pct) }}% | {{ "%+.3f"|format(f.narrative_share_change) }} | {{ f.outcome }} |
 {% endfor %}
 
 {% if analysis.watch_ticker_followup.outcome_distribution -%}
@@ -328,7 +332,7 @@
 {% if chain.sample_events -%}
 - **関連イベント例**:
 {% for se in chain.sample_events -%}
-  - {{ se.date }} {{ se.ticker }}: {{ se.summary }}
+  - {{ se.date }} {{ se.ticker|ticker_name }}: {{ se.summary }}
 {% endfor %}
 {% endif %}
 
@@ -353,7 +357,7 @@
 | 銘柄 | 検出日 | Tier1到達 | 価格反応 | 判定 |
 |------|--------|-----------|----------|------|
 {% for d in analysis.drift_evaluation.evaluations -%}
-| {{ d.ticker }} | {{ d.date }} | {{ "○" if d.tier1_arrived else "×" }} | {{ "○" if d.price_reacted else "×" }} | {{ d.outcome }} |
+| {{ market_tag(d.ticker) }}{{ d.ticker|ticker_name }} | {{ d.date }} | {{ "○" if d.tier1_arrived else "×" }} | {{ "○" if d.price_reacted else "×" }} | {{ d.outcome }} |
 {% endfor %}
 
 {% if analysis.drift_evaluation.stats -%}
@@ -387,7 +391,7 @@ Early Drift追跡の評価対象はありません（初回分析または該当
 ### 個別イベント応答
 
 {% for ep in analysis.response_profile.event_profiles[:20] -%}
-- **{{ ep.ticker }}** ({{ ep.date }}): {{ ep.response_type }} — {{ ep.evidence }}
+- **{{ market_tag(ep.ticker) }}{{ ep.ticker|ticker_name }}** ({{ ep.date }}): {{ ep.response_type }} — {{ ep.evidence }}
 {% endfor %}
 {% if analysis.response_profile.event_profiles | length > 20 -%}
 *（以下 {{ analysis.response_profile.event_profiles | length - 20 }}件省略）*
@@ -407,7 +411,7 @@ Early Drift追跡の評価対象はありません（初回分析または該当
 | 銘柄 | 日付 | 価格方向 | センチメント | アライメント | 反応率 |
 |------|------|----------|-------------|-------------|--------|
 {% for el in reacted_lags[:20] -%}
-| {{ el.ticker }} | {{ el.date }} | {{ el.price_direction }} | {{ el.sentiment }} | {{ el.direction_alignment }} | {{ "%+.1f"|format(el.reaction_pct) }}% |
+| {{ market_tag(el.ticker) }}{{ el.ticker|ticker_name }} | {{ el.date }} | {{ el.price_direction }} | {{ el.sentiment }} | {{ el.direction_alignment }} | {{ "%+.1f"|format(el.reaction_pct) }}% |
 {% endfor %}
 {% if reacted_lags | length > 20 -%}
 *（以下 {{ reacted_lags | length - 20 }}件省略）*
@@ -453,7 +457,7 @@ Regime × Reaction Lag クロス分析のデータはありません。
 | カテゴリ | 連続支配日数 | 平均シェア | 裏付け中央値 | 平均z_score | 関連銘柄 |
 |----------|------------|-----------|------------|------------|---------|
 {% for c in analysis.exhaustion.exhaustion_candidates -%}
-| {{ c.narrative_category }} | {{ c.dominant_days }}日 | {{ "%.0f"|format(c.avg_share * 100) }}% | {{ "%.2f"|format(c.median_evidence) }} | {{ "%.2f"|format(c.avg_z_score) }} | {{ c.related_tickers | join(', ') }} |
+| {{ c.narrative_category }} | {{ c.dominant_days }}日 | {{ "%.0f"|format(c.avg_share * 100) }}% | {{ "%.2f"|format(c.median_evidence) }} | {{ "%.2f"|format(c.avg_z_score) }} | {{ c.related_tickers | map("ticker_name") | join(', ') }} |
 {% endfor %}
 
 {% if analysis.exhaustion_evaluation and analysis.exhaustion_evaluation.evaluations -%}
@@ -475,4 +479,51 @@ Regime × Reaction Lag クロス分析のデータはありません。
 
 ---
 
+{% if market_scope == "GLOBAL" and analysis.cross_market -%}
+## 17. 日米ナラティブ比較
+
+{% if analysis.cross_market.narrative_comparison -%}
+| カテゴリ | US比率 | JP比率 | 差分(pt) | 注目 |
+|----------|--------|--------|----------|------|
+{% for c in analysis.cross_market.narrative_comparison -%}
+| {{ c.category }} | {{ "%.0f"|format(c.us_pct * 100) }}% | {{ "%.0f"|format(c.jp_pct * 100) }}% | {{ "%+.0f"|format(c.delta_pt * 100) }} | {{ "★" if c.notable is defined and c.notable else "" }} |
+{% endfor %}
+{% else -%}
+クロスマーケットデータ不足（日米両方のイベントが必要です）。
+{% endif %}
+
+---
+
+## 18. 日米反応速度比較
+
+{% if analysis.cross_market.reaction_speed_comparison and analysis.cross_market.reaction_speed_comparison.us -%}
+| 指標 | US | JP |
+|------|-----|-----|
+| 分析イベント数 | {{ analysis.cross_market.reaction_speed_comparison.us.total }} | {{ analysis.cross_market.reaction_speed_comparison.jp.total }} |
+| 平均反応ラグ | {{ analysis.cross_market.reaction_speed_comparison.us.avg_lag }}日 | {{ analysis.cross_market.reaction_speed_comparison.jp.avg_lag }}日 |
+| 即時反応率（≤1日） | {{ "%.0f"|format(analysis.cross_market.reaction_speed_comparison.us.immediate_rate * 100) }}% | {{ "%.0f"|format(analysis.cross_market.reaction_speed_comparison.jp.immediate_rate * 100) }}% |
+| 未反応率 | {{ "%.0f"|format(analysis.cross_market.reaction_speed_comparison.us.no_reaction_rate * 100) }}% | {{ "%.0f"|format(analysis.cross_market.reaction_speed_comparison.jp.no_reaction_rate * 100) }}% |
+{% else -%}
+反応速度比較データ不足。
+{% endif %}
+
+---
+
+## 19. ナラティブ移植候補
+
+> USで急騰したカテゴリが3日以内にJPで増加したケースを検出
+
+{% if analysis.cross_market.transplant_candidates -%}
+| カテゴリ | US急騰日 | US変化(pt) | JP反応日 | JP変化(pt) | ラグ |
+|----------|----------|-----------|----------|-----------|------|
+{% for t in analysis.cross_market.transplant_candidates -%}
+| {{ t.category }} | {{ t.us_surge_date }} | {{ "%+.0f"|format(t.us_delta_pt * 100) }} | {{ t.jp_response_date }} | {{ "%+.0f"|format(t.jp_delta_pt * 100) }} | {{ t.lag_days }}日 |
+{% endfor %}
+{% else -%}
+ナラティブ移植候補は検出されませんでした。
+{% endif %}
+
+---
+
+{% endif -%}
 *レポート生成日時: {{ generated_at }}*

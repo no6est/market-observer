@@ -9,9 +9,22 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
+from app.utils.market_utils import is_jp_ticker, ticker_display_name
+
 logger = logging.getLogger(__name__)
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+
+def _create_env() -> Environment:
+    """Create a Jinja2 environment with custom filters."""
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
+        keep_trailing_newline=True,
+    )
+    env.filters["ticker_name"] = ticker_display_name
+    env.tests["jp_ticker"] = lambda t: is_jp_ticker(t) if isinstance(t, str) else False
+    return env
 
 
 def generate_daily_report(
@@ -42,10 +55,7 @@ def generate_daily_report(
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-        keep_trailing_newline=True,
-    )
+    env = _create_env()
     template = env.get_template("daily.md.j2")
 
     rendered = template.render(
@@ -73,12 +83,17 @@ def generate_structural_report(
     tracking_queries: list[str],
     date: str | None = None,
     narrative_index: dict[str, Any] | None = None,
+    narrative_index_us: dict[str, Any] | None = None,
+    narrative_index_jp: dict[str, Any] | None = None,
     non_ai_highlights: list[dict[str, Any]] | None = None,
     overheat_alert: dict[str, Any] | None = None,
     narrative_health: dict[str, Any] | None = None,
     regime_info: dict[str, Any] | None = None,
+    regime_info_us: dict[str, Any] | None = None,
+    regime_info_jp: dict[str, Any] | None = None,
     echo_info: dict[str, Any] | None = None,
     early_drift_candidates: list[dict[str, Any]] | None = None,
+    market_scope: str = "US",
 ) -> str:
     """Generate a structural change observation report.
 
@@ -92,8 +107,12 @@ def generate_structural_report(
         tracking_queries: Search query strings.
         date: Report date string (YYYY-MM-DD).
         narrative_index: Narrative concentration metrics (optional).
+        narrative_index_us: US-market narrative concentration for GLOBAL mode (optional).
+        narrative_index_jp: JP-market narrative concentration for GLOBAL mode (optional).
         non_ai_highlights: Non-AI structural change highlights (optional).
         overheat_alert: Narrative overheat alert dict (optional).
+        regime_info_us: US-market-specific regime info for GLOBAL mode (optional).
+        regime_info_jp: JP-market-specific regime info for GLOBAL mode (optional).
         early_drift_candidates: Early drift detection results (optional).
 
     Returns:
@@ -102,10 +121,7 @@ def generate_structural_report(
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-        keep_trailing_newline=True,
-    )
+    env = _create_env()
     template = env.get_template("structural.md.j2")
 
     rendered = template.render(
@@ -118,12 +134,17 @@ def generate_structural_report(
         structural_questions=structural_questions,
         tracking_queries=tracking_queries,
         narrative_index=narrative_index,
+        narrative_index_us=narrative_index_us,
+        narrative_index_jp=narrative_index_jp,
         non_ai_highlights=non_ai_highlights,
         overheat_alert=overheat_alert,
         narrative_health=narrative_health,
         regime_info=regime_info,
+        regime_info_us=regime_info_us,
+        regime_info_jp=regime_info_jp,
         echo_info=echo_info,
         early_drift_candidates=early_drift_candidates or [],
+        market_scope=market_scope,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
@@ -134,6 +155,7 @@ def generate_structural_report(
 def generate_weekly_report(
     analysis: dict[str, Any],
     date: str | None = None,
+    market_scope: str = "US",
 ) -> str:
     """Generate a weekly meta-analysis report.
 
@@ -147,15 +169,13 @@ def generate_weekly_report(
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-        keep_trailing_newline=True,
-    )
+    env = _create_env()
     template = env.get_template("weekly.md.j2")
 
     rendered = template.render(
         date=date,
         analysis=analysis,
+        market_scope=market_scope,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
@@ -166,6 +186,7 @@ def generate_weekly_report(
 def generate_monthly_report(
     analysis: dict[str, Any],
     date: str | None = None,
+    market_scope: str = "US",
 ) -> str:
     """Generate a monthly narrative analysis report.
 
@@ -179,10 +200,7 @@ def generate_monthly_report(
     if date is None:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-        keep_trailing_newline=True,
-    )
+    env = _create_env()
     template = env.get_template("monthly.md.j2")
 
     # Translation dicts for template
@@ -238,6 +256,7 @@ def generate_monthly_report(
         pattern_ja=pattern_ja,
         response_type_ja=response_type_ja,
         outcome_ja=outcome_ja,
+        market_scope=market_scope,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 

@@ -47,6 +47,7 @@ def compute_monthly_analysis(
     days: int = 30,
     reference_date: str | None = None,
     llm_client: Any | None = None,
+    market_scope: str = "US",
 ) -> dict[str, Any]:
     """Compute monthly narrative analysis from database history.
 
@@ -55,6 +56,7 @@ def compute_monthly_analysis(
         days: Number of days to analyze (default 30).
         reference_date: Reference date string (YYYY-MM-DD).
         llm_client: Optional Gemini client for LLM-enhanced analysis.
+        market_scope: "US", "JP", or "GLOBAL".
 
     Returns:
         Dict with all section data for the monthly report.
@@ -335,6 +337,17 @@ def compute_monthly_analysis(
             )
         except Exception:
             pass
+
+    # --- 17-19. Cross-market analysis (GLOBAL only) ---
+    result["cross_market"] = None
+    if market_scope == "GLOBAL":
+        try:
+            cross = _compute_cross_market_analysis(
+                enriched_history, narrative_history, result,
+            )
+            result["cross_market"] = cross
+        except Exception:
+            logger.debug("Failed to compute cross-market analysis")
 
     logger.info(
         "Monthly analysis: %d lifecycle cats, %d evaluations, %d transitions, "
@@ -828,3 +841,177 @@ def _generate_forward_posture(
         "watch_tickers": watch_tickers,
         "regime_outlook": regime_outlook,
     }
+
+
+# ---------------------------------------------------------------------------
+# Cross-market analysis (GLOBAL mode only)
+# ---------------------------------------------------------------------------
+
+
+def _compute_cross_market_analysis(
+    enriched_history: list[dict[str, Any]],
+    narrative_history: list[dict[str, Any]],
+    full_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Compute cross-market (US vs JP) analysis sections.
+
+    Returns dict with:
+    - narrative_comparison: category share differences between US and JP
+    - reaction_speed_comparison: avg_lag / immediate_rate by market
+    - transplant_candidates: narratives that surged in US then appeared in JP
+
+    Only called in GLOBAL mode.
+    """
+    from app.utils.market_utils import is_jp_ticker
+
+    result: dict[str, Any] = {
+        "narrative_comparison": [],
+        "reaction_speed_comparison": {},
+        "transplant_candidates": [],
+    }
+
+    # --- Section 17: Narrative category share comparison ---
+    us_cats: Counter = Counter()
+    jp_cats: Counter = Counter()
+    us_total = 0
+    jp_total = 0
+    for e in enriched_history:
+        cat = e.get("narrative_category", "")
+        if not cat:
+            continue
+        ticker = e.get("ticker", "")
+        if is_jp_ticker(ticker):
+            jp_cats[cat] += 1
+            jp_total += 1
+        else:
+            us_cats[cat] += 1
+            us_total += 1
+
+    all_cats = sorted(set(us_cats.keys()) | set(jp_cats.keys()))
+    narrative_comparison: list[dict[str, Any]] = []
+    for cat in all_cats:
+        us_pct = us_cats[cat] / us_total if us_total > 0 else 0.0
+        jp_pct = jp_cats[cat] / jp_total if jp_total > 0 else 0.0
+        delta = us_pct - jp_pct
+        entry = {
+            "category": cat,
+            "us_pct": round(us_pct, 3),
+            "jp_pct": round(jp_pct, 3),
+            "delta_pt": round(delta, 3),
+        }
+        if abs(delta) >= 0.10:
+            entry["notable"] = True
+        narrative_comparison.append(entry)
+    result["narrative_comparison"] = narrative_comparison
+
+    # --- Section 18: Reaction speed comparison ---
+    reaction_lag = full_result.get("reaction_lag")
+    if reaction_lag and reaction_lag.get("event_lags"):
+        us_lags: list[int] = []
+        jp_lags: list[int] = []
+        us_immediate = 0
+        jp_immediate = 0
+        us_no_reaction = 0
+        jp_no_reaction = 0
+        us_count = 0
+        jp_count = 0
+
+        for el in reaction_lag["event_lags"]:
+            ticker = el.get("ticker", "")
+            if is_jp_ticker(ticker):
+                jp_count += 1
+                if el.get("reacted") and el.get("lag_days") is not None:
+                    jp_lags.append(el["lag_days"])
+                    if el["lag_days"] <= 1:
+                        jp_immediate += 1
+                else:
+                    jp_no_reaction += 1
+            else:
+                us_count += 1
+                if el.get("reacted") and el.get("lag_days") is not None:
+                    us_lags.append(el["lag_days"])
+                    if el["lag_days"] <= 1:
+                        us_immediate += 1
+                else:
+                    us_no_reaction += 1
+
+        result["reaction_speed_comparison"] = {
+            "us": {
+                "total": us_count,
+                "avg_lag": round(sum(us_lags) / len(us_lags), 1) if us_lags else 0.0,
+                "immediate_rate": round(us_immediate / us_count, 3) if us_count else 0.0,
+                "no_reaction_rate": round(us_no_reaction / us_count, 3) if us_count else 0.0,
+            },
+            "jp": {
+                "total": jp_count,
+                "avg_lag": round(sum(jp_lags) / len(jp_lags), 1) if jp_lags else 0.0,
+                "immediate_rate": round(jp_immediate / jp_count, 3) if jp_count else 0.0,
+                "no_reaction_rate": round(jp_no_reaction / jp_count, 3) if jp_count else 0.0,
+            },
+        }
+
+    # --- Section 19: Narrative transplant candidates ---
+    # Check if a category that surged in US (+10pt day-over-day)
+    # appears in JP within 3 days (+5pt increase)
+    daily_us: dict[str, Counter] = {}
+    daily_jp: dict[str, Counter] = {}
+    for e in enriched_history:
+        cat = e.get("narrative_category", "")
+        date = e.get("date", "")
+        ticker = e.get("ticker", "")
+        if not cat or not date:
+            continue
+        if is_jp_ticker(ticker):
+            daily_jp.setdefault(date, Counter())[cat] += 1
+        else:
+            daily_us.setdefault(date, Counter())[cat] += 1
+
+    sorted_dates = sorted(set(daily_us.keys()) | set(daily_jp.keys()))
+    if len(sorted_dates) >= 3:
+        # Compute daily US category share
+        us_daily_pct: dict[str, dict[str, float]] = {}
+        for d in sorted_dates:
+            total_d = sum(daily_us.get(d, Counter()).values()) or 1
+            us_daily_pct[d] = {
+                cat: cnt / total_d
+                for cat, cnt in daily_us.get(d, Counter()).items()
+            }
+
+        jp_daily_pct: dict[str, dict[str, float]] = {}
+        for d in sorted_dates:
+            total_d = sum(daily_jp.get(d, Counter()).values()) or 1
+            jp_daily_pct[d] = {
+                cat: cnt / total_d
+                for cat, cnt in daily_jp.get(d, Counter()).items()
+            }
+
+        transplant_candidates: list[dict[str, Any]] = []
+        for i in range(1, len(sorted_dates)):
+            prev_d = sorted_dates[i - 1]
+            curr_d = sorted_dates[i]
+            for cat in set(us_daily_pct.get(curr_d, {}).keys()):
+                us_prev = us_daily_pct.get(prev_d, {}).get(cat, 0.0)
+                us_curr = us_daily_pct.get(curr_d, {}).get(cat, 0.0)
+                us_delta = us_curr - us_prev
+                if us_delta < 0.10:
+                    continue
+                # Check JP within 3 days
+                for j in range(i, min(i + 3, len(sorted_dates))):
+                    check_d = sorted_dates[j]
+                    jp_prev_d = sorted_dates[max(0, j - 1)]
+                    jp_prev = jp_daily_pct.get(jp_prev_d, {}).get(cat, 0.0)
+                    jp_check = jp_daily_pct.get(check_d, {}).get(cat, 0.0)
+                    jp_delta = jp_check - jp_prev
+                    if jp_delta >= 0.05:
+                        transplant_candidates.append({
+                            "category": cat,
+                            "us_surge_date": curr_d,
+                            "us_delta_pt": round(us_delta, 3),
+                            "jp_response_date": check_d,
+                            "jp_delta_pt": round(jp_delta, 3),
+                            "lag_days": j - i,
+                        })
+                        break
+        result["transplant_candidates"] = transplant_candidates
+
+    return result

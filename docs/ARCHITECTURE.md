@@ -1,6 +1,6 @@
 # Market Observability System - Architecture
 
-> 最終更新: v8 (2026-02-22)
+> 最終更新: v9 (2026-02-23)
 
 ---
 
@@ -79,7 +79,7 @@ app/
 │   ├── mention_anomaly.py   #   言及急増
 │   └── combined.py          #   複合スコアリング
 │
-├── enrichers/               # 文脈付与・分析 (25モジュール)
+├── enrichers/               # 文脈付与・分析 (25モジュール + 1ユーティリティ)
 │   ├── [分類系]             #   shock_classifier, narrative_classifier
 │   ├── [スコアリング系]     #   impact_scorer, evidence_scorer, spp, ai_centricity
 │   ├── [構造分析系]         #   propagation, media_tier, echo_chamber, regime_detector
@@ -93,15 +93,16 @@ app/
 │   └── templates/           #   4テンプレート (.md.j2)
 │
 ├── llm/                     # LLM連携
-│   └── gemini.py            #   Google Gemini API クライアント
+│   └── gemini.py            #   Google Gemini API クライアント (thinking model対応)
 │
 └── utils/
-    └── http_client.py       # HTTP ユーティリティ
+    ├── http_client.py       # HTTP ユーティリティ
+    └── market_utils.py      # JP/US分類・ティッカー表示
 
 scripts/
 └── backfill_daily.py        # 過去日付バックフィル
 
-tests/                       # 432テスト
+tests/                       # 510テスト
 configs/
 └── config.yaml              # 全設定
 reports/                     # 生成レポート出力先
@@ -214,7 +215,7 @@ SPP = consecutive_days (0.25) + evidence_trend (0.20) + price_trend (0.20)
 | `propagation` | セクターマップからの波及候補検出 + 方向推定（positive/negative/mixed） |
 | `media_tier` | Tier1(主要通信社)/Tier2(専門メディア)/SNS の伝播パターン分類 |
 | `echo_chamber` | メディアエコーの検出と evidence_score への補正係数適用 |
-| `regime_detector` | 3レジーム判定（normal/high_vol/tightening）+ レジーム適応SPP重み |
+| `regime_detector` | 3レジーム判定（normal/high_vol/tightening）+ レジーム適応SPP重み + 市場別レジーム（US/JP） |
 
 ### 4.4 ナラティブ分析系
 
@@ -225,13 +226,13 @@ SPP = consecutive_days (0.25) + evidence_trend (0.20) + price_trend (0.20)
 | `narrative_baseline` | カテゴリ別統計ベースライン（7/30/90日窓） |
 | `non_ai_highlights` | 高SIS+低メディア+市場裏付けの「見落とされている」非AIイベント |
 | `theme_extractor` | TF-IDF キーワード + novelty スコアリング |
-| `ticker_aliases` | 企業名⇔ティッカーのエイリアスマッチング |
+| `ticker_aliases` | 企業名⇔ティッカーのエイリアスマッチング（US+JP対応） |
 
 ### 4.5 仮説・検証系
 
 | モジュール | 説明 |
 |-----------|------|
-| `hypothesis` | テンプレートベースの仮説生成（anomaly + 同時期ニュースの紐付け） |
+| `hypothesis` | テンプレートベースの仮説生成（anomaly + 同時期ニュースの紐付け）+ LLM構造化出力（タイトル/本文分離） |
 | `causal_chain` | trigger → direct impact → structural implication のチェーン構築 |
 | `structural_questions` | レポートごとに3つの前向き質問を生成 |
 | `narrative_archive` | 仮説の30日後事後評価（confirmed/expired/inconclusive） |
@@ -242,7 +243,7 @@ SPP = consecutive_days (0.25) + evidence_trend (0.20) + price_trend (0.20)
 | モジュール | 時間軸 | 主要セクション |
 |-----------|--------|--------------|
 | `weekly_analysis` | 7日 | ナラティブトレンド、伝播構造、仮説評価 |
-| `monthly_analysis` | 30日 | ライフサイクル(8セクション) + 市場応答構造(8セクション) |
+| `monthly_analysis` | 30日 | ライフサイクル(8セクション) + 市場応答構造(8セクション) + 日米比較(3セクション) |
 | `market_response` | 30日 | 反応ラグ+方向性、ウォッチ評価、再編連鎖、Drift追跡、7型プロファイル、Regime×Lag、疲弊検出 |
 
 ### 4.7 チャート
@@ -253,9 +254,9 @@ SPP = consecutive_days (0.25) + evidence_trend (0.20) + price_trend (0.20)
 
 ---
 
-## 5. 月次レポート構成（16セクション）
+## 5. 月次レポート構成（19セクション）
 
-セクション1-8は v6、セクション9-13は v7、セクション14-16は v8 で追加。
+セクション1-8は v6、セクション9-13は v7、セクション14-16は v8、セクション17-19は v9 で追加。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -288,6 +289,13 @@ SPP = consecutive_days (0.25) + evidence_trend (0.20) + price_trend (0.20)
 │  │ 15. Regime×Lag       ← 市場環境別の反応速度比較        │    │
 │  │ 16. ナラティブ疲弊   ← 空洞化ナラティブの検出          │    │
 │  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  [v9: GLOBAL マルチマーケット] ※ market_scope=GLOBAL 時のみ      │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ 17. 日米ナラティブ比較 ← USとJPのカテゴリ偏り対比      │    │
+│  │ 18. 日米反応速度比較   ← 市場間の反応ラグ差異           │    │
+│  │ 19. ナラティブ移植候補 ← US急騰テーマのJP波及検出       │    │
+│  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -311,11 +319,13 @@ PHASE 6 (Regime×Lag) ← 独立
 ### Phase 1: 収集
 
 ```
-yfinance (period=1mo)  ──→ price_data
-RSS feeds (6 sources)  ──→ articles
-Reddit (5 subreddits)  ──→ community_posts
-HackerNews (top 100)   ──→ community_posts
+yfinance (period=1mo, 15-25銘柄)  ──→ price_data
+RSS feeds (6-10 sources)          ──→ articles
+Reddit (5 subreddits)             ──→ community_posts
+HackerNews (top 100)              ──→ community_posts
 ```
+
+※ 銘柄数・RSS数は `market_scope` 設定により変動（US: 15銘柄/6RSS、GLOBAL: 25銘柄/10RSS）
 
 ### Phase 2: 検出
 
@@ -401,13 +411,15 @@ enriched_events ──→ theme_extractor        → themes テーブル
 
 ### 銘柄・データソース
 
-| 設定 | 内容 | 件数 |
-|------|------|------|
-| `tickers` | 監視対象銘柄 | 15 (AI 10 + 非AI 5) |
-| `rss_feeds` | RSSフィード | 6 (TechCrunch, ArsTechnica, TheVerge, Reuters, CNBC, MarketWatch) |
-| `reddit.subreddits` | Redditサブレディット | 5 (wallstreetbets, stocks, technology, investing, energy) |
-| `hackernews` | HackerNews設定 | min_score: 10, limit: 100 |
-| `sector_map` | セクター→銘柄マッピング | 8セクター (AI_Infrastructure等) |
+| 設定 | 内容 | US | JP | GLOBAL |
+|------|------|----|----|--------|
+| `tickers` / `jp_tickers` | 監視対象銘柄 | 15 | 10 | 25 |
+| `rss_feeds` / `jp_rss_feeds` | RSSフィード | 6 | 4 | 10 |
+| `sector_map` / `jp_sector_map` | セクターマッピング | 8 | 6 | 14 |
+| `reddit.subreddits` | Redditサブレディット | 5 | — | 5 |
+| `hackernews` | HackerNews設定 | min_score: 10, limit: 100 | — | 同左 |
+
+`market_scope` 設定（`US` / `GLOBAL`）により `active_tickers`, `active_rss_feeds`, `active_sector_map` が適切なセットを返す。
 
 ### 検出・分析パラメータ
 
@@ -426,7 +438,7 @@ enriched_events ──→ theme_extractor        → themes テーブル
 
 ## 9. テスト構成
 
-**432テスト** (pytest)
+**510テスト** (pytest)
 
 | カテゴリ | テスト数 | 対象 |
 |---------|---------|------|
@@ -434,6 +446,7 @@ enriched_events ──→ theme_extractor        → themes テーブル
 | Enrichers (v1-v5) | ~250 | 各enricherモジュールの単体テスト |
 | Monthly Analysis (v6) | 24 | ライフサイクル、レジーム弧、前月比較 |
 | Market Response (v7+v8) | 64 | 反応ラグ+方向性、ウォッチ評価、再編連鎖、Regime×Lag、疲弊検出、7型プロファイル |
+| GLOBAL/Cross-market (v9) | ~78 | market_scope、日米比較、JP銘柄エイリアス、市場ユーティリティ |
 | Reporter/Config/Storage | ~60 | テンプレートレンダリング、DB操作、設定ロード |
 
 ---
@@ -450,6 +463,7 @@ enriched_events ──→ theme_extractor        → themes テーブル
 | v6 | 月次ナラティブ | monthly_analysis (セクション1-8), monthly.md.j2 |
 | v7 | 市場応答構造 | market_response (セクション9-13), reaction_lag chart, spp reference_date修正 |
 | v8 | 方向性対応市場応答 | 方向性分析+LLMセンチメント, Regime×Lag, 疲弊検出, 7型プロファイル (セクション14-16) |
+| v9 | GLOBAL マルチマーケット | JP10銘柄追加, 日米比較分析 (セクション17-19), Gemini thinking model対応, 仮説構造化出力 |
 
 ### 各バージョンの設計ドキュメント
 
@@ -463,3 +477,4 @@ enriched_events ──→ theme_extractor        → themes テーブル
 | `docs/design_v6_monthly_narrative.md` | v6 月次ナラティブ設計 |
 | `docs/design_v7_market_response.md` | v7 市場応答構造設計 |
 | `docs/design_v8_direction_aware.md` | v8 方向性対応市場応答設計 |
+| `docs/design_v9_global_market.md` | v9 GLOBAL マルチマーケット設計 |

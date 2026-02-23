@@ -125,13 +125,18 @@ def generate_hypotheses(
             hypothesis_text = _DEFAULT_TEMPLATE.format(**template_vars)
 
         # Attempt LLM enhancement if gemini_client is available
+        hypothesis_title = ""
+        hypothesis_body = ""
         if gemini_client is not None:
             try:
                 enhanced = gemini_client.enhance_hypothesis_ja(
                     hypothesis_text, evidence_titles
                 )
-                if enhanced:
-                    hypothesis_text = enhanced
+                if enhanced and isinstance(enhanced, dict):
+                    hypothesis_title = enhanced.get("title", "")
+                    hypothesis_body = enhanced.get("body", "")
+                    if hypothesis_title:
+                        hypothesis_text = hypothesis_title
             except Exception:
                 logger.warning("Gemini enhancement failed for %s, using template", ticker)
 
@@ -164,6 +169,7 @@ def generate_hypotheses(
 
         hypotheses.append({
             "hypothesis": hypothesis_text,
+            "hypothesis_body": hypothesis_body,
             "context": context,
             "evidence": evidence,
             "evidence_titles": evidence_titles,

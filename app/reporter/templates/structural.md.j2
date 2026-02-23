@@ -1,13 +1,28 @@
-# 構造変化観測レポート - {{ date }}
+{# Market tag macro for GLOBAL mode #}
+{% macro market_tag(ticker) -%}
+{% if market_scope == "GLOBAL" %}{% if ticker.endswith(".T") %}[JP]{% else %}[US]{% endif %} {% endif %}
+{%- endmacro %}
+# 構造変化観測レポート - {{ date }}{% if market_scope == "GLOBAL" %} (GLOBAL){% elif market_scope == "JP" %} (JP){% endif %}
 
 ---
 
+{% if market_scope == "GLOBAL" and events -%}
+## 市場別概要
+
+| 市場 | イベント数 | 最高SIS |
+|------|-----------|---------|
+| US | {{ events | rejectattr("ticker", "jp_ticker") | list | length }} | {% set us_sis = events | rejectattr("ticker", "jp_ticker") | map(attribute="sis") | list %}{{ "%.3f"|format(us_sis | max) if us_sis else "-" }} |
+| JP | {{ events | selectattr("ticker", "jp_ticker") | list | length }} | {% set jp_sis = events | selectattr("ticker", "jp_ticker") | map(attribute="sis") | list %}{{ "%.3f"|format(jp_sis | max) if jp_sis else "-" }} |
+
+---
+
+{% endif -%}
 ## 構造インパクトランキング
 
 | 順位 | 銘柄 | ショックタイプ | SIS | 裏付け | SPP | シグナル | サマリー |
 |------|------|----------------|-----|--------|-----|----------|----------|
 {% for e in events -%}
-| {{ loop.index }} | {{ e.ticker }} | {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(e.shock_type, e.shock_type) }} | {{ "%.3f"|format(e.sis) }} | {{ "%.2f"|format(e.evidence_score | default(0)) }} | {{ "%.2f"|format(e.spp | default(0)) }} | {{ {"price_change": "価格変動", "volume_spike": "出来高急増", "mention_surge": "言及急増"}.get(e.signal_type, e.signal_type) }} | {{ e.summary | default("N/A") }} |
+| {{ loop.index }} | {{ market_tag(e.ticker) }}{{ e.ticker|ticker_name }} | {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(e.shock_type, e.shock_type) }} | {{ "%.3f"|format(e.sis) }} | {{ "%.2f"|format(e.evidence_score | default(0)) }} | {{ "%.2f"|format(e.spp | default(0)) }} | {{ {"price_change": "価格変動", "volume_spike": "出来高急増", "mention_surge": "言及急増"}.get(e.signal_type, e.signal_type) }} | {{ e.summary | default("N/A") }} |
 {% endfor -%}
 {% if not events -%}
 | - | - | - | - | - | - | - | 構造変化イベントは検出されませんでした |
@@ -42,6 +57,29 @@
 {% endfor -%}
 {% endif %}
 
+{% if market_scope == "GLOBAL" -%}
+{% if narrative_index_us and narrative_index_us.category_distribution -%}
+
+### US市場ナラティブ分布
+
+| カテゴリ | 件数 | 比率 |
+|----------|------|------|
+{% for cat, info in narrative_index_us.category_distribution.items() -%}
+| {{ cat }} | {{ info.count }} | {{ "%.0f"|format(info.pct * 100) }}% |
+{% endfor %}
+{% endif -%}
+{% if narrative_index_jp and narrative_index_jp.category_distribution -%}
+
+### JP市場ナラティブ分布
+
+| カテゴリ | 件数 | 比率 |
+|----------|------|------|
+{% for cat, info in narrative_index_jp.category_distribution.items() -%}
+| {{ cat }} | {{ info.count }} | {{ "%.0f"|format(info.pct * 100) }}% |
+{% endfor -%}
+{% endif -%}
+{% endif -%}
+
 ---
 
 {% endif -%}
@@ -50,7 +88,7 @@
 ## 非AI構造変化ハイライト
 
 {% for h in non_ai_highlights -%}
-### {{ loop.index }}. {{ h.ticker }}（{{ h.narrative_category }}）
+### {{ loop.index }}. {{ market_tag(h.ticker) }}{{ h.ticker|ticker_name }}（{{ h.narrative_category }}）
 - **サマリー**: {{ h.summary }}
 - **SIS**: {{ "%.3f"|format(h.sis) }} / **裏付け**: {{ "%.2f"|format(h.evidence_score | default(0)) }}
 - **注目度不足スコア**: {{ "%.3f"|format(h.undercovered_score | default(0)) }}
@@ -71,8 +109,8 @@
 {% for t in structural_themes -%}
 ### {{ loop.index }}. {{ t.name }}
 - **ショックタイプ**: {{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(t.shock_type, t.shock_type) }}
-- **関連銘柄**: {{ t.tickers | join(", ") }}
-- **セクター**: {{ {"AI_Infrastructure": "AI基盤", "Cloud_Security": "クラウドセキュリティ", "Data_Platform": "データプラットフォーム", "Enterprise_AI": "エンタープライズAI", "Cloud_Networking": "クラウドネットワーキング"}.get(t.sector, t.sector) | default("N/A") }}
+- **関連銘柄**: {{ t.tickers | map("ticker_name") | join(", ") }}
+- **セクター**: {{ {"AI_Infrastructure": "AI基盤", "Cloud_Security": "クラウドセキュリティ", "Data_Platform": "データプラットフォーム", "Enterprise_AI": "エンタープライズAI", "Cloud_Networking": "クラウドネットワーキング", "Energy": "エネルギー", "Financial": "金融", "Healthcare": "ヘルスケア", "Defense_Geopolitics": "防衛・地政学", "JP_Manufacturing": "日本・製造業", "JP_Tech": "日本・テクノロジー", "JP_Finance": "日本・金融", "JP_Telecom": "日本・通信", "JP_Services": "日本・サービス", "JP_Consumer": "日本・消費財"}.get(t.sector, t.sector) | default("N/A") }}
 - **平均SIS**: {{ "%.3f"|format(t.sis_avg) }}
 {% if t.keywords -%}
 - **キーワード**: {{ t.keywords | join(", ") }}
@@ -89,7 +127,7 @@
 ## 因果チェーン
 
 {% for c in causal_chains -%}
-### {{ c.ticker }}（{{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(c.shock_type, c.shock_type) }}）
+### {{ c.ticker|ticker_name }}（{{ {"Tech shock": "テクノロジーショック", "Business model shock": "ビジネスモデルショック", "Regulation shock": "規制ショック", "Narrative shift": "ナラティブシフト", "Execution signal": "業績シグナル"}.get(c.shock_type, c.shock_type) }}）
 
 {{ c.text_graph }}
 
@@ -104,6 +142,9 @@
 
 {% for h in hypotheses -%}
 ### {{ loop.index }}. {{ h.hypothesis }}
+{% if h.hypothesis_body | default("") %}
+{{ h.hypothesis_body }}
+{% endif %}
 - **確信度**: {{ "%.0f"|format(h.confidence * 100) if h.confidence is defined else "N/A" }}%
 - **状況**: {{ h.context | default("N/A") }}
 {% if h.evidence_titles | default([]) -%}
@@ -137,7 +178,7 @@
 ## 波及候補
 
 {% for p in propagation -%}
-### {{ p.source_ticker }} → {{ p.related_tickers | join(", ") }}
+### {{ market_tag(p.source_ticker) }}{{ p.source_ticker|ticker_name }} → {{ p.related_tickers | map("ticker_name") | join(", ") }}
 - **セクター**: {{ p.sector | default("N/A") }}
 - **理由**: {{ p.reason | default("N/A") }}
 {% if p.direction is defined and p.direction != "unknown" -%}
@@ -183,6 +224,17 @@
 
 {% if regime_info.spp_weights -%}
 **適用SPPウェイト**: {% for k, v in regime_info.spp_weights.items() %}{{ k }}={{ "%.2f"|format(v) }}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endif -%}
+
+{% if market_scope == "GLOBAL" and regime_info_us and regime_info_jp -%}
+
+### 市場別レジーム
+
+| 市場 | レジーム | ボラティリティ | 下落比率 | 信頼度 |
+|------|----------|---------------|----------|--------|
+| US | {{ {"normal": "平時", "high_vol": "高ボラティリティ", "tightening": "引き締め"}.get(regime_info_us.regime, regime_info_us.regime) }} | {{ "%.1f"|format(regime_info_us.avg_volatility * 100) }}% | {{ "%.0f"|format(regime_info_us.declining_pct * 100) }}% | {{ "%.0f"|format(regime_info_us.regime_confidence * 100) }}% |
+| JP | {{ {"normal": "平時", "high_vol": "高ボラティリティ", "tightening": "引き締め"}.get(regime_info_jp.regime, regime_info_jp.regime) }} | {{ "%.1f"|format(regime_info_jp.avg_volatility * 100) }}% | {{ "%.0f"|format(regime_info_jp.declining_pct * 100) }}% | {{ "%.0f"|format(regime_info_jp.regime_confidence * 100) }}% |
+
 {% endif -%}
 
 ---
@@ -236,7 +288,7 @@
 > ※ カテゴリ比率<20%、z-score≧1.5、SNS→Tier2伝播、価格未反応の全条件を満たすイベント
 
 {% for d in early_drift_candidates -%}
-### {{ loop.index }}. {{ d.ticker }}（{{ d.narrative_category }}）
+### {{ loop.index }}. {{ market_tag(d.ticker) }}{{ d.ticker|ticker_name }}（{{ d.narrative_category }}）
 - **カテゴリ比率**: {{ "%.0f"|format(d.category_pct * 100) }}%（z-score={{ "%.2f"|format(d.z_score) }}）
 - **伝播**: {{ d.diffusion_pattern }}
 - **市場反応**: 未反応

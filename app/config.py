@@ -90,13 +90,17 @@ class EchoChamberConfig(BaseModel):
 class AppConfig(BaseModel):
     """Root application configuration."""
 
+    market_scope: str = "US"  # "US" | "JP" | "GLOBAL"
     tickers: list[str] = Field(default_factory=list)
+    jp_tickers: list[str] = Field(default_factory=list)
     rss_feeds: list[RSSFeed] = Field(default_factory=list)
+    jp_rss_feeds: list[RSSFeed] = Field(default_factory=list)
     reddit: RedditConfig = Field(default_factory=RedditConfig)
     hackernews: HackerNewsConfig = Field(default_factory=HackerNewsConfig)
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
     report: ReportConfig = Field(default_factory=ReportConfig)
     sector_map: dict[str, list[str]] = Field(default_factory=dict)
+    jp_sector_map: dict[str, list[str]] = Field(default_factory=dict)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     gemini: GeminiConfig = Field(default_factory=GeminiConfig)
     narrative: NarrativeConfig = Field(default_factory=NarrativeConfig)
@@ -107,6 +111,35 @@ class AppConfig(BaseModel):
     @property
     def database_path(self) -> str:
         return self.database.path
+
+    @property
+    def active_tickers(self) -> list[str]:
+        """Return tickers for the current market_scope."""
+        if self.market_scope == "JP":
+            return list(self.jp_tickers)
+        if self.market_scope == "GLOBAL":
+            return list(self.tickers) + list(self.jp_tickers)
+        return list(self.tickers)
+
+    @property
+    def active_rss_feeds(self) -> list[RSSFeed]:
+        """Return RSS feeds for the current market_scope."""
+        if self.market_scope == "JP":
+            return list(self.jp_rss_feeds)
+        if self.market_scope == "GLOBAL":
+            return list(self.rss_feeds) + list(self.jp_rss_feeds)
+        return list(self.rss_feeds)
+
+    @property
+    def active_sector_map(self) -> dict[str, list[str]]:
+        """Return sector map for the current market_scope."""
+        if self.market_scope == "JP":
+            return dict(self.jp_sector_map)
+        if self.market_scope == "GLOBAL":
+            merged = dict(self.sector_map)
+            merged.update(self.jp_sector_map)
+            return merged
+        return dict(self.sector_map)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> AppConfig:

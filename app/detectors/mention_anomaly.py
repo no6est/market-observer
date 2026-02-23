@@ -8,7 +8,7 @@ from typing import Any
 
 from app.database import Database
 from app.config import DetectionConfig
-from app.enrichers.ticker_aliases import TICKER_ALIASES
+from app.enrichers.ticker_aliases import TICKER_ALIASES, _has_cjk
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 _AMBIGUOUS_TICKERS = frozenset({
     "PATH", "NET", "AI", "ON", "IT", "ALL", "GO", "A", "NOW",
     "REAL", "CAN", "DO", "BIG", "LOW", "HAS", "ARE", "SO", "TRUE",
+    "JT", "NTT",
 })
 
 
@@ -31,16 +32,23 @@ def _count_mentions(ticker: str, texts: list[str]) -> int:
     aliases = TICKER_ALIASES.get(ticker, [ticker])
     total = 0
     for alias in aliases:
-        if alias.upper() in _AMBIGUOUS_TICKERS:
+        if _has_cjk(alias):
+            # CJK aliases: boundary-free substring match
+            pattern = re.compile(re.escape(alias))
+        elif alias.upper() in _AMBIGUOUS_TICKERS:
             flags = 0  # case-sensitive
+            pattern = re.compile(r"\b" + re.escape(alias) + r"\b", flags)
         else:
             flags = re.IGNORECASE
-        pattern = re.compile(r"\b" + re.escape(alias) + r"\b", flags)
+            pattern = re.compile(r"\b" + re.escape(alias) + r"\b", flags)
         total += sum(len(pattern.findall(text)) for text in texts)
     # Also count the ticker itself if not already in aliases
     if ticker not in aliases:
-        flags = 0 if ticker.upper() in _AMBIGUOUS_TICKERS else re.IGNORECASE
-        pattern = re.compile(r"\b" + re.escape(ticker) + r"\b", flags)
+        if _has_cjk(ticker):
+            pattern = re.compile(re.escape(ticker))
+        else:
+            flags = 0 if ticker.upper() in _AMBIGUOUS_TICKERS else re.IGNORECASE
+            pattern = re.compile(r"\b" + re.escape(ticker) + r"\b", flags)
         total += sum(len(pattern.findall(text)) for text in texts)
     return total
 

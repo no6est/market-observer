@@ -28,6 +28,13 @@ _SECTOR_JA = {
     "Financial": "金融",
     "Healthcare": "ヘルスケア",
     "Defense_Geopolitics": "防衛・地政学",
+    # JP sectors
+    "JP_Manufacturing": "日本・製造業",
+    "JP_Tech": "日本・テクノロジー",
+    "JP_Finance": "日本・金融",
+    "JP_Telecom": "日本・通信",
+    "JP_Services": "日本・サービス",
+    "JP_Consumer": "日本・消費財",
 }
 
 

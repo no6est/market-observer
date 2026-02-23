@@ -39,6 +39,26 @@ _SHOCK_PATTERNS: dict[str, list[str]] = {
     ],
 }
 
+_SHOCK_PATTERNS_JA: dict[str, list[str]] = {
+    "Tech shock": [
+        r"(?:新製品|発表|技術革新|ローンチ|オープンソース|プレビュー|破壊的)",
+        r"(?:AIエージェント|AIモデル|AIツール|AIプラットフォーム|ロボット|自動化)",
+    ],
+    "Business model shock": [
+        r"(?:価格改定|サブスクリプション|収益モデル|買収|合併|リストラ|事業再編|提携)",
+    ],
+    "Regulation shock": [
+        r"(?:規制|独占禁止|コンプライアンス|法律|制裁|関税|行政処分|課徴金)",
+    ],
+    "Narrative shift": [
+        r"(?:バブル|過熱|パラダイム|センチメント|暴落|急騰|パニック|回転|マニア)",
+    ],
+    "Execution signal": [
+        r"(?:決算|業績|ガイダンス|見通し|四半期|通期|上方修正|下方修正)",
+        r"(?:社長辞任|CEO交代|経営陣刷新|人事異動)",
+    ],
+}
+
 _SIGNAL_TYPE_DEFAULTS: dict[str, str] = {
     "price_change": "Execution signal",
     "volume_spike": "Narrative shift",
@@ -76,6 +96,11 @@ def classify_shock_type(
         score = 0
         for pattern in patterns:
             matches = re.findall(pattern, combined_text, re.IGNORECASE)
+            score += len(matches)
+        # Also score Japanese patterns
+        ja_patterns = _SHOCK_PATTERNS_JA.get(shock_type, [])
+        for pattern in ja_patterns:
+            matches = re.findall(pattern, combined_text)
             score += len(matches)
         scores[shock_type] = score
 

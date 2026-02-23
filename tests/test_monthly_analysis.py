@@ -64,6 +64,8 @@ class TestComputeMonthlyAnalysis:
             "regime_cross",
             "exhaustion",
             "exhaustion_evaluation",
+            # v9: cross-market (GLOBAL only, None when US/JP)
+            "cross_market",
         }
         assert set(result.keys()) == expected_keys
 

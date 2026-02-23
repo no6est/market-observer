@@ -1,3 +1,5 @@
+market_scope: US
+
 tickers:
   - NVDA
   - MSFT
@@ -16,6 +18,18 @@ tickers:
   - LMT    # 防衛・地政学
   - NEE    # 公益・エネルギー転換
 
+jp_tickers:
+  - 7203.T   # トヨタ
+  - 6758.T   # ソニー
+  - 9984.T   # SoftBank Group
+  - 8035.T   # 東京エレクトロン
+  - 9432.T   # NTT
+  - 6098.T   # リクルート
+  - 6861.T   # キーエンス
+  - 6501.T   # 日立
+  - 8306.T   # 三菱UFJ
+  - 2914.T   # JT
+
 rss_feeds:
   - name: TechCrunch
     url: https://techcrunch.com/feed/
@@ -30,6 +44,16 @@ rss_feeds:
     url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114
   - name: MarketWatch
     url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+
+jp_rss_feeds:
+  - name: ReutersJP
+    url: https://assets.wor.jp/rss/rdf/reuters/top.rdf
+  - name: ITmedia
+    url: https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml
+  - name: NikkeiTech
+    url: https://xtech.nikkei.com/rss/index.rdf
+  - name: NHKBusiness
+    url: https://www.nhk.or.jp/rss/news/cat5.xml
 
 reddit:
   subreddits:
@@ -102,6 +126,24 @@ sector_map:
     - RTX
     - NOC
     - GD
+
+jp_sector_map:
+  JP_Manufacturing:
+    - 7203.T
+    - 6501.T
+  JP_Tech:
+    - 6758.T
+    - 8035.T
+    - 6861.T
+  JP_Finance:
+    - 8306.T
+  JP_Telecom:
+    - 9432.T
+  JP_Services:
+    - 6098.T
+    - 9984.T
+  JP_Consumer:
+    - 2914.T
 
 database:
   path: data/market_obs.db

@@ -75,6 +75,38 @@ _NARRATIVE_PATTERNS: dict[str, list[str]] = {
     ],
 }
 
+# Japanese keyword patterns (CJK — no \b boundaries)
+_NARRATIVE_PATTERNS_JA: dict[str, list[str]] = {
+    "AI/LLM/自動化": [
+        r"(?:人工知能|機械学習|生成AI|大規模言語モデル|自動化|ディープラーニング|深層学習)",
+        r"(?:チャットボット|対話AI|推論|ファインチューニング|基盤モデル)",
+    ],
+    "規制/政策/地政学": [
+        r"(?:規制|独占禁止法|制裁|関税|輸出規制|安全保障)",
+        r"(?:法案|法律|当局|行政処分|課徴金|公正取引委員会)",
+    ],
+    "金融/金利/流動性": [
+        r"(?:金利|日銀|利上げ|利下げ|金融政策|インフレ|国債|量的緩和)",
+        r"(?:為替|円安|円高|株価|信用|融資|預金|マイナス金利)",
+    ],
+    "エネルギー/資源": [
+        r"(?:エネルギー|石油|原油|天然ガス|再生可能|太陽光|風力|原子力|水素)",
+        r"(?:蓄電池|EV|リチウム|レアアース|鉱物資源|脱炭素)",
+    ],
+    "半導体/供給網": [
+        r"(?:半導体|チップ|製造装置|GPU|DRAM|HBM|ウエハー|ファウンドリ)",
+        r"(?:サプライチェーン|供給網|在庫|リードタイム|物流|部品不足)",
+    ],
+    "ガバナンス/経営": [
+        r"(?:社長|会長|取締役|CEO|経営陣|辞任|後任|人事|経営再建)",
+        r"(?:買収|合併|統合|リストラ|事業再編|株主総会|コーポレートガバナンス)",
+    ],
+    "社会/労働/教育": [
+        r"(?:労働|雇用|賃金|人手不足|働き方改革|テレワーク|リモートワーク)",
+        r"(?:教育|大学|スキル|研修|多様性|ダイバーシティ|ESG)",
+    ],
+}
+
 
 def classify_narrative_category(
     event: dict[str, Any],
@@ -113,6 +145,11 @@ def classify_narrative_category(
         for pattern in patterns:
             matches = re.findall(pattern, combined_text, re.IGNORECASE)
             score += len(matches)
+        # Also score Japanese patterns for the same category
+        ja_patterns = _NARRATIVE_PATTERNS_JA.get(category, [])
+        for pattern in ja_patterns:
+            matches = re.findall(pattern, combined_text)
+            score += len(matches)
         scores[category] = score
 
     if max(scores.values()) == 0:
@@ -131,7 +168,7 @@ def classify_narrative_category(
                 f"テキスト: {combined_text[:500]}\n"
                 f"カテゴリ名のみを回答してください。"
             )
-            response = gemini_client.generate(prompt)
+            response = gemini_client.generate(prompt, thinking_budget=0)
             if response:
                 for cat in NARRATIVE_CATEGORIES:
                     if cat in response:

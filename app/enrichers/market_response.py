@@ -100,7 +100,7 @@ def _classify_sentiment_batch(
         )
 
         try:
-            response = llm_client.generate(prompt, max_tokens=1024)
+            response = llm_client.generate(prompt, max_tokens=1024, thinking_budget=0)
             if response:
                 # Parse JSON array from response
                 # Strip markdown code fences if present
@@ -354,6 +354,52 @@ def compute_reaction_lag(
         "stats": stats,
         "histogram_data": histogram_data,
     }
+
+
+def split_reaction_lag_by_market(
+    reaction_lag_result: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Split reaction lag event_lags into US and JP subsets.
+
+    Args:
+        reaction_lag_result: Output from compute_reaction_lag().
+
+    Returns:
+        Dict with ``"US"`` and ``"JP"`` keys, each containing a subset
+        of event_lags with recomputed stats.
+    """
+    from app.utils.market_utils import is_jp_ticker
+
+    event_lags = reaction_lag_result.get("event_lags", [])
+    result: dict[str, dict[str, Any]] = {}
+
+    for market_label, predicate in [
+        ("US", lambda t: not is_jp_ticker(t)),
+        ("JP", lambda t: is_jp_ticker(t)),
+    ]:
+        subset = [el for el in event_lags if predicate(el.get("ticker", ""))]
+        total = len(subset)
+        if total == 0:
+            result[market_label] = {
+                "event_lags": [],
+                "total": 0,
+                "avg_lag": 0.0,
+                "immediate_rate": 0.0,
+                "no_reaction_rate": 0.0,
+            }
+            continue
+        reacted_lags = [el["lag_days"] for el in subset if el.get("reacted") and el.get("lag_days") is not None]
+        immediate = sum(1 for el in subset if el.get("reacted") and (el.get("lag_days") or 0) <= 1)
+        no_react = sum(1 for el in subset if not el.get("reacted"))
+        result[market_label] = {
+            "event_lags": subset,
+            "total": total,
+            "avg_lag": round(sum(reacted_lags) / len(reacted_lags), 1) if reacted_lags else 0.0,
+            "immediate_rate": round(immediate / total, 3),
+            "no_reaction_rate": round(no_react / total, 3),
+        }
+
+    return result
 
 
 # ---------------------------------------------------------------------------
