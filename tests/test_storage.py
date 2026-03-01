@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from src.storage.database import Database
+from app.database import Database
 
 
 @pytest.fixture

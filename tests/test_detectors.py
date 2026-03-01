@@ -6,10 +6,10 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from src.detectors.price_anomaly import detect_price_anomalies
-from src.detectors.volume_anomaly import detect_volume_anomalies
-from src.storage.database import Database
-from src.utils.config import DetectionConfig
+from app.detectors.price_anomaly import detect_price_anomalies
+from app.detectors.volume_anomaly import detect_volume_anomalies
+from app.database import Database
+from app.config import DetectionConfig
 
 
 @pytest.fixture

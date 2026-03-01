@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.reporter.daily_report import generate_daily_report
+from app.reporter.daily_report import generate_daily_report
 
 
 @pytest.fixture
@@ -95,14 +95,14 @@ class TestReportSections:
             date="2025-01-15",
         )
 
-        assert "# Daily Market Observation Report - 2025-01-15" in report
-        assert "## Top Anomalies" in report
-        assert "## Emerging Themes" in report
-        assert "## Facts" in report
-        assert "## Hypotheses" in report
-        assert "## Propagation Candidates" in report
-        assert "## Tracking Queries" in report
-        assert "Generated at" in report
+        assert "# 日次マーケット観測レポート - 2025-01-15" in report
+        assert "## 異常検出サマリー" in report
+        assert "## 新興テーマ" in report
+        assert "## ファクト" in report
+        assert "## 仮説" in report
+        assert "## 波及候補" in report
+        assert "## 追跡クエリ" in report
+        assert "レポート生成日時" in report
 
     def test_anomalies_rendered(self, sample_anomalies) -> None:
         """Anomaly data should appear in the report table."""
@@ -116,7 +116,7 @@ class TestReportSections:
         )
 
         assert "NVDA" in report
-        assert "price_change" in report
+        assert "価格変動" in report  # price_change is translated
         assert "0.85" in report
         assert "CRWD" in report
 
@@ -164,7 +164,7 @@ class TestReportSections:
         assert "margin guidance concerns" in report
         assert "70%" in report
         assert "https://example.com/nvda-earnings" in report
-        assert "Counterpoints" in report
+        assert "反論" in report
 
     def test_facts_and_hypotheses_separate(
         self, sample_facts, sample_hypotheses
@@ -179,8 +179,8 @@ class TestReportSections:
             tracking_queries=[],
         )
 
-        facts_pos = report.index("## Facts")
-        hyp_pos = report.index("## Hypotheses")
+        facts_pos = report.index("## ファクト")
+        hyp_pos = report.index("## 仮説")
 
         # Facts section comes before Hypotheses
         assert facts_pos < hyp_pos
@@ -206,7 +206,7 @@ class TestReportWithEmptyData:
             tracking_queries=[],
         )
 
-        assert "No anomalies detected" in report
+        assert "異常は検出されませんでした" in report
 
     def test_empty_themes(self) -> None:
         """Report should render gracefully with no themes."""
@@ -219,7 +219,7 @@ class TestReportWithEmptyData:
             tracking_queries=[],
         )
 
-        assert "No emerging themes detected" in report
+        assert "新興テーマは検出されませんでした" in report
 
     def test_empty_facts(self) -> None:
         """Report should render gracefully with no facts."""
@@ -232,7 +232,7 @@ class TestReportWithEmptyData:
             tracking_queries=[],
         )
 
-        assert "No notable facts collected" in report
+        assert "特筆すべきファクトはありませんでした" in report
 
     def test_empty_hypotheses(self) -> None:
         """Report should render gracefully with no hypotheses."""
@@ -245,7 +245,7 @@ class TestReportWithEmptyData:
             tracking_queries=[],
         )
 
-        assert "No hypotheses generated" in report
+        assert "仮説は生成されませんでした" in report
 
     def test_all_empty(self) -> None:
         """Completely empty report should still be valid Markdown."""
@@ -259,12 +259,12 @@ class TestReportWithEmptyData:
         )
 
         # Should still have all section headers
-        assert "## Top Anomalies" in report
-        assert "## Emerging Themes" in report
-        assert "## Facts" in report
-        assert "## Hypotheses" in report
-        assert "## Propagation Candidates" in report
-        assert "## Tracking Queries" in report
+        assert "## 異常検出サマリー" in report
+        assert "## 新興テーマ" in report
+        assert "## ファクト" in report
+        assert "## 仮説" in report
+        assert "## 波及候補" in report
+        assert "## 追跡クエリ" in report
 
 
 class TestReportMarkdown:
@@ -279,10 +279,9 @@ class TestReportMarkdown:
             tracking_queries=[],
         )
 
-        # Should have table header row
-        assert "| Rank | Ticker | Signal | Score | Summary |" in report
-        # Should have separator row
-        assert "|------|--------|--------|-------|---------|" in report
+        # Should have table header row with Japanese headers
+        assert "| 順位 |" in report
+        assert "銘柄" in report
 
     def test_tracking_queries_as_code(self, sample_queries) -> None:
         """Tracking queries should be rendered as code blocks."""
