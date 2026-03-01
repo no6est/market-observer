@@ -1,0 +1,83 @@
+name: Pipeline
+
+on:
+  schedule:
+    - cron: "0 22 * * *"   # daily  — JST 7:00
+    - cron: "0 0 * * 6"    # weekly — JST 9:00 Saturday
+    - cron: "0 1 1 * *"    # monthly — JST 10:00 1st of month
+  workflow_dispatch:
+    inputs:
+      pipeline:
+        description: "Pipeline to run"
+        type: choice
+        options:
+          - daily
+          - weekly
+          - monthly
+
+permissions:
+  contents: write
+
+env:
+  PIPELINE: >-
+    ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.pipeline
+    || (github.event.schedule == '0 22 * * *' && 'daily')
+    || (github.event.schedule == '0 0 * * 6' && 'weekly')
+    || (github.event.schedule == '0 1 1 * *' && 'monthly')
+    || 'daily' }}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Prepare directories
+        run: mkdir -p data reports
+
+      - name: Download DB from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download db-snapshot --pattern market_obs.db --dir data/ || true
+
+      - name: Run pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          echo "Running pipeline: $PIPELINE"
+          if [ "$PIPELINE" = "daily" ]; then
+            python -m app run-daily
+          elif [ "$PIPELINE" = "weekly" ]; then
+            python -m app run-weekly
+          elif [ "$PIPELINE" = "monthly" ]; then
+            python -m app run-monthly
+          fi
+
+      - name: Ensure release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view db-snapshot || \
+            gh release create db-snapshot --title "DB Snapshot" --notes "Auto-managed SQLite snapshot"
+
+      - name: Upload DB to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload db-snapshot data/market_obs.db --clobber
+
+      - name: Upload reports as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-${{ env.PIPELINE }}-${{ github.run_id }}
+          path: reports/
+          retention-days: 30
