@@ -46,6 +46,7 @@ def compute_monthly_analysis(
     db: Any,
     days: int = 30,
     reference_date: str | None = None,
+    llm_client: Any | None = None,
 ) -> dict[str, Any]:
     """Compute monthly narrative analysis from database history.
 
@@ -53,9 +54,10 @@ def compute_monthly_analysis(
         db: Database instance with narrative history and anomaly data.
         days: Number of days to analyze (default 30).
         reference_date: Reference date string (YYYY-MM-DD).
+        llm_client: Optional Gemini client for LLM-enhanced analysis.
 
     Returns:
-        Dict with all 8 section data for the monthly report.
+        Dict with all section data for the monthly report.
     """
     result: dict[str, Any] = {
         "narrative_lifecycle": {},
@@ -91,6 +93,11 @@ def compute_monthly_analysis(
         "extinction_chains": None,
         "drift_evaluation": None,
         "response_profile": None,
+        # v8: Direction-aware market response
+        "direction_analysis": None,
+        "regime_cross": None,
+        "exhaustion": None,
+        "exhaustion_evaluation": None,
     }
 
     # --- 1. Fetch base data ---
@@ -230,12 +237,21 @@ def compute_monthly_analysis(
     except Exception:
         logger.debug("Failed to generate forward posture")
 
-    # --- 9. Reaction Lag (PHASE 1) ---
+    # --- 9. Reaction Lag (PHASE 1) + Direction Analysis ---
     try:
         from app.enrichers.market_response import compute_reaction_lag
         result["reaction_lag"] = compute_reaction_lag(
             db, days=days, reference_date=reference_date,
+            llm_client=llm_client,
         )
+        # Extract direction analysis from reaction lag stats
+        rl = result["reaction_lag"]
+        if rl and rl.get("stats"):
+            result["direction_analysis"] = {
+                "aligned_rate": rl["stats"].get("aligned_rate", 0.0),
+                "contrarian_rate": rl["stats"].get("contrarian_rate", 0.0),
+                "event_lags": rl.get("event_lags", []),
+            }
     except Exception:
         logger.debug("Failed to compute reaction lag")
 
@@ -266,16 +282,59 @@ def compute_monthly_analysis(
     except Exception:
         logger.debug("Failed to evaluate drift followups")
 
-    # --- 13. Response Profile (PHASE 5, depends on 9 + 11) ---
+    # --- 13. Response Profile (PHASE 5, depends on 9 + 11 + 14 + 15) ---
     try:
         from app.enrichers.market_response import compute_response_profile
         result["response_profile"] = compute_response_profile(
             db, days=days, reference_date=reference_date,
             reaction_lag_result=result.get("reaction_lag"),
             extinction_result=result.get("extinction_chains"),
+            exhaustion_result=result.get("exhaustion"),
         )
     except Exception:
         logger.debug("Failed to compute response profile")
+
+    # --- 14. Regime × Reaction Lag Cross Analysis ---
+    try:
+        from app.enrichers.market_response import compute_regime_reaction_cross
+        result["regime_cross"] = compute_regime_reaction_cross(
+            db, days=days, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to compute regime cross analysis")
+
+    # --- 15. Narrative Exhaustion Detection ---
+    try:
+        from app.enrichers.market_response import detect_narrative_exhaustion
+        result["exhaustion"] = detect_narrative_exhaustion(
+            db, days=days, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to detect narrative exhaustion")
+
+    # --- 16. Exhaustion Post-Evaluation ---
+    try:
+        from app.enrichers.market_response import evaluate_exhaustion_outcomes
+        if result.get("exhaustion"):
+            result["exhaustion_evaluation"] = evaluate_exhaustion_outcomes(
+                db, result["exhaustion"],
+                reference_date=reference_date,
+            )
+    except Exception:
+        logger.debug("Failed to evaluate exhaustion outcomes")
+
+    # Re-compute response profile if exhaustion was computed after initial profile
+    if result.get("exhaustion") and result.get("response_profile"):
+        try:
+            from app.enrichers.market_response import compute_response_profile as _crp
+            result["response_profile"] = _crp(
+                db, days=days, reference_date=reference_date,
+                reaction_lag_result=result.get("reaction_lag"),
+                extinction_result=result.get("extinction_chains"),
+                exhaustion_result=result.get("exhaustion"),
+            )
+        except Exception:
+            pass
 
     logger.info(
         "Monthly analysis: %d lifecycle cats, %d evaluations, %d transitions, "

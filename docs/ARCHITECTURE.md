@@ -1,6 +1,6 @@
 # Market Observability System - Architecture
 
-> 最終更新: v7 (2026-02-22)
+> 最終更新: v8 (2026-02-22)
 
 ---
 
@@ -101,7 +101,7 @@ app/
 scripts/
 └── backfill_daily.py        # 過去日付バックフィル
 
-tests/                       # 398テスト
+tests/                       # 432テスト
 configs/
 └── config.yaml              # 全設定
 reports/                     # 生成レポート出力先
@@ -242,8 +242,8 @@ SPP = consecutive_days (0.25) + evidence_trend (0.20) + price_trend (0.20)
 | モジュール | 時間軸 | 主要セクション |
 |-----------|--------|--------------|
 | `weekly_analysis` | 7日 | ナラティブトレンド、伝播構造、仮説評価 |
-| `monthly_analysis` | 30日 | ライフサイクル(8セクション) + 市場応答構造(5セクション) |
-| `market_response` | 30日 | 反応ラグ、ウォッチ評価、再編連鎖、Drift追跡、応答プロファイル |
+| `monthly_analysis` | 30日 | ライフサイクル(8セクション) + 市場応答構造(8セクション) |
+| `market_response` | 30日 | 反応ラグ+方向性、ウォッチ評価、再編連鎖、Drift追跡、7型プロファイル、Regime×Lag、疲弊検出 |
 
 ### 4.7 チャート
 
@@ -253,9 +253,9 @@ SPP = consecutive_days (0.25) + evidence_trend (0.20) + price_trend (0.20)
 
 ---
 
-## 5. 月次レポート構成（13セクション）
+## 5. 月次レポート構成（16セクション）
 
-セクション1-8は v6、セクション9-13は v7 で追加。
+セクション1-8は v6、セクション9-13は v7、セクション14-16は v8 で追加。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -275,11 +275,18 @@ SPP = consecutive_days (0.25) + evidence_trend (0.20) + price_trend (0.20)
 │                                                                  │
 │  [v7: 市場応答構造]                                              │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  9. 反応ラグ         ← ナラティブ後、何日で価格反応？  │    │
+│  │  9. 反応ラグ+方向性  ← 何日で反応？+ アライメント統計  │    │
 │  │ 10. ウォッチ評価     ← 前月注目銘柄のフォローアップ    │    │
 │  │ 11. 再編連鎖         ← 消滅カテゴリ→台頭カテゴリ検出  │    │
 │  │ 12. Early Drift      ← SNS初動→メディア到達の追跡     │    │
-│  │ 13. 応答プロファイル ← 即時/遅延/過熱/無反応/再編 分類 │    │
+│  │ 13. 応答プロファイル ← 7型分類（+疲弊型・逆行型）     │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  [v8: 方向性対応市場応答]                                        │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │ 14. 方向性分析詳細   ← 価格方向×センチメント×整合性   │    │
+│  │ 15. Regime×Lag       ← 市場環境別の反応速度比較        │    │
+│  │ 16. ナラティブ疲弊   ← 空洞化ナラティブの検出          │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -287,10 +294,12 @@ SPP = consecutive_days (0.25) + evidence_trend (0.20) + price_trend (0.20)
 ### セクション間の依存関係
 
 ```
-PHASE 1 (反応ラグ) ───→ PHASE 5 (応答プロファイル)
-PHASE 3 (再編連鎖) ───→ PHASE 5 (再編型分類)
+PHASE 1 (反応ラグ+方向性) ──→ PHASE 5 (7型プロファイル: 逆行型に使用)
+PHASE 3 (再編連鎖) ─────────→ PHASE 5 (再編型分類)
+PHASE 7 (疲弊検出) ─────────→ PHASE 5 (疲弊型分類)
 PHASE 2 (ウォッチ)  ← 独立
 PHASE 4 (Drift)    ← 独立（run_weekly の蓄積が前提）
+PHASE 6 (Regime×Lag) ← 独立
 ```
 
 ---
@@ -417,14 +426,14 @@ enriched_events ──→ theme_extractor        → themes テーブル
 
 ## 9. テスト構成
 
-**398テスト** (pytest)
+**432テスト** (pytest)
 
 | カテゴリ | テスト数 | 対象 |
 |---------|---------|------|
 | Detectors | ~30 | price/volume/mention/combined anomaly |
 | Enrichers (v1-v5) | ~250 | 各enricherモジュールの単体テスト |
 | Monthly Analysis (v6) | 24 | ライフサイクル、レジーム弧、前月比較 |
-| Market Response (v7) | 30 | 反応ラグ、ウォッチ評価、再編連鎖、応答プロファイル |
+| Market Response (v7+v8) | 64 | 反応ラグ+方向性、ウォッチ評価、再編連鎖、Regime×Lag、疲弊検出、7型プロファイル |
 | Reporter/Config/Storage | ~60 | テンプレートレンダリング、DB操作、設定ロード |
 
 ---
@@ -440,6 +449,7 @@ enriched_events ──→ theme_extractor        → themes テーブル
 | v5 | 週次品質 | weekly_analysis, narrative_chart, SPP重複排除 |
 | v6 | 月次ナラティブ | monthly_analysis (セクション1-8), monthly.md.j2 |
 | v7 | 市場応答構造 | market_response (セクション9-13), reaction_lag chart, spp reference_date修正 |
+| v8 | 方向性対応市場応答 | 方向性分析+LLMセンチメント, Regime×Lag, 疲弊検出, 7型プロファイル (セクション14-16) |
 
 ### 各バージョンの設計ドキュメント
 
@@ -452,3 +462,4 @@ enriched_events ──→ theme_extractor        → themes テーブル
 | `docs/design_v5_weekly_quality.md` | v5 週次品質改善設計 |
 | `docs/design_v6_monthly_narrative.md` | v6 月次ナラティブ設計 |
 | `docs/design_v7_market_response.md` | v7 市場応答構造設計 |
+| `docs/design_v8_direction_aware.md` | v8 方向性対応市場応答設計 |

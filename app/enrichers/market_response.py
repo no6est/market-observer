@@ -1,11 +1,14 @@
-"""Market response structure analysis — v7.
+"""Market response structure analysis — v8.
 
 Analyzes how markets respond to narratives over time:
 - PHASE 1: Reaction lag analysis (narrative → price response delay)
+  + Direction analysis (price direction, LLM sentiment, alignment)
 - PHASE 2: Watch ticker follow-up (previous month evaluation)
 - PHASE 3: Narrative extinction / reorganization chain detection
 - PHASE 4: Early drift persistent tracking and evaluation
-- PHASE 5: Market response profile classification
+- PHASE 5: Market response profile classification (7 types)
+- PHASE 6: Regime × Reaction Lag cross analysis
+- PHASE 7: Narrative exhaustion detection + post-evaluation
 
 This module produces metrics only — no hypotheses are generated.
 All language uses "co-occurrence / response" framing, never causal assertions.
@@ -13,6 +16,7 @@ All language uses "co-occurrence / response" framing, never causal assertions.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections import Counter
@@ -32,20 +36,140 @@ _HISTOGRAM_BUCKETS = [
 ]
 
 
+def _classify_sentiment_batch(
+    llm_client: Any | None,
+    events: list[dict[str, Any]],
+) -> dict[tuple[str, str], str]:
+    """Classify event sentiment using LLM batch processing.
+
+    Each event's summary is sent to Gemini to determine
+    "positive" / "negative" / "unclear" sentiment.
+
+    Args:
+        llm_client: Gemini client instance or None.
+        events: List of enriched event dicts.
+
+    Returns:
+        Mapping from (ticker, date) to sentiment string.
+    """
+    result: dict[tuple[str, str], str] = {}
+
+    # Without LLM, all sentiments default to "unclear"
+    if llm_client is None:
+        for e in events:
+            ticker = e.get("ticker", "")
+            date = e.get("date", "")
+            if ticker and date:
+                result[(ticker, date)] = "unclear"
+        return result
+
+    # Collect events with summaries for batch classification
+    batch_events: list[dict[str, Any]] = []
+    for e in events:
+        ticker = e.get("ticker", "")
+        date = e.get("date", "")
+        summary = e.get("summary", "")
+        if ticker and date:
+            batch_events.append({
+                "ticker": ticker,
+                "date": date,
+                "summary": summary or "",
+            })
+
+    if not batch_events:
+        return result
+
+    # Process in chunks to avoid token limits
+    _CHUNK_SIZE = 20
+    valid_values = {"positive", "negative", "unclear"}
+
+    for chunk_start in range(0, len(batch_events), _CHUNK_SIZE):
+        chunk = batch_events[chunk_start:chunk_start + _CHUNK_SIZE]
+
+        lines = []
+        for i, be in enumerate(chunk, 1):
+            lines.append(f'{i}. "{be["ticker"]}: {be["summary"]}"')
+        summaries_text = "\n".join(lines)
+
+        prompt = (
+            "以下のイベントサマリーについて、市場センチメントを分類してください。\n"
+            "各行に対して positive / negative / unclear のいずれかをJSON配列で返してください。\n"
+            "配列の要素数は入力行数と一致させてください。\n\n"
+            f"{summaries_text}\n\n"
+            "回答（JSON配列のみ）:"
+        )
+
+        try:
+            response = llm_client.generate(prompt, max_tokens=1024)
+            if response:
+                # Parse JSON array from response
+                # Strip markdown code fences if present
+                cleaned = response.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[-1]
+                    cleaned = cleaned.rsplit("```", 1)[0]
+                cleaned = cleaned.strip()
+
+                sentiments = json.loads(cleaned)
+                if isinstance(sentiments, list) and len(sentiments) == len(chunk):
+                    for be, s in zip(chunk, sentiments):
+                        val = s.strip().lower() if isinstance(s, str) else "unclear"
+                        result[(be["ticker"], be["date"])] = (
+                            val if val in valid_values else "unclear"
+                        )
+                    continue
+        except Exception:
+            logger.debug(
+                "LLM sentiment classification failed for chunk %d-%d",
+                chunk_start, chunk_start + len(chunk),
+            )
+
+        # Fallback for this chunk: all "unclear"
+        for be in chunk:
+            result[(be["ticker"], be["date"])] = "unclear"
+
+    return result
+
+
+def _compute_alignment(sentiment: str, price_direction: str) -> str:
+    """Compute direction alignment between sentiment and price move.
+
+    Args:
+        sentiment: "positive", "negative", or "unclear".
+        price_direction: "up", "down", or "flat".
+
+    Returns:
+        "aligned", "contrarian", or "unknown".
+    """
+    if sentiment == "unclear" or price_direction == "flat":
+        return "unknown"
+    if (sentiment == "positive" and price_direction == "up") or \
+       (sentiment == "negative" and price_direction == "down"):
+        return "aligned"
+    if (sentiment == "positive" and price_direction == "down") or \
+       (sentiment == "negative" and price_direction == "up"):
+        return "contrarian"
+    return "unknown"
+
+
 def compute_reaction_lag(
     db: Any,
     days: int = 30,
     reference_date: str | None = None,
+    llm_client: Any | None = None,
 ) -> dict[str, Any]:
     """Compute reaction lag between narrative events and price moves.
 
     For each enriched event, measures how many days until the ticker's
-    daily return exceeds ±2%.
+    daily return exceeds ±2%.  Also classifies price direction, LLM
+    sentiment, and direction alignment.
 
     Args:
         db: Database instance.
         days: Analysis window in days.
         reference_date: Reference date (YYYY-MM-DD).
+        llm_client: Optional Gemini client for sentiment classification.
+            When None, sentiment defaults to "unclear" (degraded mode).
 
     Returns:
         Dict with event_lags, stats, and histogram_data.
@@ -59,6 +183,8 @@ def compute_reaction_lag(
             "delayed_rate": 0.0,
             "no_reaction_rate": 0.0,
             "total_events": 0,
+            "aligned_rate": 0.0,
+            "contrarian_rate": 0.0,
         },
         "histogram_data": [(b, 0) for b in _HISTOGRAM_BUCKETS],
     }
@@ -74,6 +200,9 @@ def compute_reaction_lag(
     if not events:
         return empty
 
+    # LLM sentiment classification (batch)
+    sentiment_map = _classify_sentiment_batch(llm_client, events)
+
     event_lags: list[dict[str, Any]] = []
 
     for event in events:
@@ -81,6 +210,8 @@ def compute_reaction_lag(
         event_date = event.get("date")
         if not ticker or not event_date:
             continue
+
+        sentiment = sentiment_map.get((ticker, event_date), "unclear")
 
         try:
             start_dt = datetime.strptime(event_date, "%Y-%m-%d")
@@ -101,6 +232,9 @@ def compute_reaction_lag(
                 "lag_days": None,
                 "reaction_pct": 0.0,
                 "reacted": False,
+                "price_direction": "flat",
+                "sentiment": sentiment,
+                "direction_alignment": "unknown",
             })
             continue
 
@@ -111,6 +245,9 @@ def compute_reaction_lag(
                 "lag_days": None,
                 "reaction_pct": 0.0,
                 "reacted": False,
+                "price_direction": "flat",
+                "sentiment": sentiment,
+                "direction_alignment": "unknown",
             })
             continue
 
@@ -127,12 +264,26 @@ def compute_reaction_lag(
                 reaction_pct = (curr_close - prev_close) / prev_close * 100
                 break
 
+        # Determine price direction from signed reaction_pct
+        if reaction_pct > 0:
+            price_direction = "up"
+        elif reaction_pct < 0:
+            price_direction = "down"
+        else:
+            price_direction = "flat"
+
+        # Determine direction alignment
+        direction_alignment = _compute_alignment(sentiment, price_direction)
+
         event_lags.append({
             "ticker": ticker,
             "date": event_date,
             "lag_days": lag_days,
             "reaction_pct": round(reaction_pct, 2),
             "reacted": lag_days is not None,
+            "price_direction": price_direction,
+            "sentiment": sentiment,
+            "direction_alignment": direction_alignment,
         })
 
     # Compute stats
@@ -158,6 +309,15 @@ def compute_reaction_lag(
     delayed_count = sum(1 for el in event_lags if el["reacted"] and el["lag_days"] >= 3)
     no_reaction_count = sum(1 for el in event_lags if not el["reacted"])
 
+    # Direction alignment stats (exclude "unknown")
+    aligned_count = sum(
+        1 for el in event_lags if el.get("direction_alignment") == "aligned"
+    )
+    contrarian_count = sum(
+        1 for el in event_lags if el.get("direction_alignment") == "contrarian"
+    )
+    known_alignment = aligned_count + contrarian_count
+
     stats = {
         "avg_lag": round(avg_lag, 1),
         "median_lag": round(median_lag, 1),
@@ -165,6 +325,14 @@ def compute_reaction_lag(
         "delayed_rate": round(delayed_count / total, 3),
         "no_reaction_rate": round(no_reaction_count / total, 3),
         "total_events": total,
+        "aligned_rate": (
+            round(aligned_count / known_alignment, 3)
+            if known_alignment > 0 else 0.0
+        ),
+        "contrarian_rate": (
+            round(contrarian_count / known_alignment, 3)
+            if known_alignment > 0 else 0.0
+        ),
     }
 
     # Build histogram
@@ -588,6 +756,421 @@ def detect_narrative_extinction_chain(
 
 
 # ---------------------------------------------------------------------------
+# PHASE 6: Regime × Reaction Lag Cross Analysis
+# ---------------------------------------------------------------------------
+
+
+def compute_regime_reaction_cross(
+    db: Any,
+    days: int = 30,
+    reference_date: str | None = None,
+) -> dict[str, Any]:
+    """Cross-analyze reaction lag statistics by market regime.
+
+    Groups enriched events by regime (bullish/bearish/neutral) and
+    computes per-regime reaction lag statistics.
+
+    Args:
+        db: Database instance.
+        days: Analysis window in days.
+        reference_date: Reference date (YYYY-MM-DD).
+
+    Returns:
+        Dict with regime_stats and notable_patterns.
+    """
+    empty: dict[str, Any] = {
+        "regime_stats": {},
+        "notable_patterns": [],
+    }
+
+    try:
+        events = db.get_enriched_events_history(
+            days=days, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to fetch enriched events for regime cross")
+        return empty
+
+    if not events:
+        return empty
+
+    # Build date→regime map from regime_snapshots (authoritative source)
+    date_regime_map: dict[str, str] = {}
+    try:
+        regime_history = db.get_regime_history(
+            days=days, reference_date=reference_date,
+        )
+        for r in regime_history:
+            date_regime_map[r.get("date", "")] = r.get("regime", "neutral")
+    except Exception:
+        logger.debug("Failed to fetch regime history for cross analysis")
+
+    # Map regime keys to Japanese for display
+    _regime_ja: dict[str, str] = {
+        "normal": "平時", "high_vol": "高ボラ", "tightening": "引き締め",
+        "bullish": "強気", "bearish": "弱気", "neutral": "中立",
+    }
+
+    # Group events by regime (using regime_snapshots, falling back to
+    # enriched_events.regime, then "neutral")
+    regime_events: dict[str, list[dict[str, Any]]] = {}
+    for e in events:
+        event_date = e.get("date", "")
+        raw_regime = (
+            date_regime_map.get(event_date)
+            or e.get("regime")
+            or "neutral"
+        )
+        regime = _regime_ja.get(raw_regime, raw_regime)
+        regime_events.setdefault(regime, []).append(e)
+
+    if not regime_events:
+        return empty
+
+    # For each regime group, compute reaction lag
+    regime_stats: dict[str, dict[str, Any]] = {}
+    for regime, r_events in regime_events.items():
+        # Build a temporary DB mock-like call for reaction lag per regime
+        lag_results: list[int | None] = []
+        reacted_count = 0
+        immediate_count = 0
+        no_reaction_count = 0
+
+        for event in r_events:
+            ticker = event.get("ticker")
+            event_date = event.get("date")
+            if not ticker or not event_date:
+                continue
+            try:
+                start_dt = datetime.strptime(event_date, "%Y-%m-%d")
+            except ValueError:
+                continue
+            end_dt = start_dt + timedelta(days=_MAX_LAG_DAYS)
+            try:
+                prices = db.get_price_data_range(
+                    ticker, event_date, end_dt.strftime("%Y-%m-%d"),
+                )
+            except Exception:
+                lag_results.append(None)
+                no_reaction_count += 1
+                continue
+
+            if len(prices) < 2:
+                lag_results.append(None)
+                no_reaction_count += 1
+                continue
+
+            found_lag = None
+            for i in range(1, len(prices)):
+                prev_close = prices[i - 1].get("close")
+                curr_close = prices[i].get("close")
+                if prev_close is None or curr_close is None or prev_close == 0:
+                    continue
+                daily_return = abs((curr_close - prev_close) / prev_close) * 100
+                if daily_return >= _REACTION_THRESHOLD_PCT:
+                    found_lag = i
+                    break
+
+            lag_results.append(found_lag)
+            if found_lag is not None:
+                reacted_count += 1
+                if found_lag <= 1:
+                    immediate_count += 1
+            else:
+                no_reaction_count += 1
+
+        total = len(lag_results)
+        if total == 0:
+            continue
+
+        reacted_lags = [lag for lag in lag_results if lag is not None]
+        avg_lag = (
+            round(sum(reacted_lags) / len(reacted_lags), 1)
+            if reacted_lags else 0.0
+        )
+
+        regime_stats[regime] = {
+            "event_count": total,
+            "avg_lag": avg_lag,
+            "immediate_rate": round(immediate_count / total, 3),
+            "no_reaction_rate": round(no_reaction_count / total, 3),
+        }
+
+    # Detect notable patterns (regime keys are already Japanese)
+    notable_patterns: list[str] = []
+    for regime, stats in regime_stats.items():
+        if stats["immediate_rate"] >= 0.6:
+            notable_patterns.append(
+                f"{regime}レジームでは即時反応率が高い ({stats['immediate_rate']*100:.0f}%)"
+            )
+        if stats["no_reaction_rate"] >= 0.6:
+            notable_patterns.append(
+                f"{regime}レジームでは未反応率が高い ({stats['no_reaction_rate']*100:.0f}%)"
+            )
+        if stats["avg_lag"] >= 5.0 and stats["event_count"] >= 3:
+            notable_patterns.append(
+                f"{regime}レジームでは反応ラグが大きい (平均{stats['avg_lag']}日)"
+            )
+
+    return {
+        "regime_stats": regime_stats,
+        "notable_patterns": notable_patterns,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PHASE 7: Narrative Exhaustion Detection
+# ---------------------------------------------------------------------------
+
+
+def detect_narrative_exhaustion(
+    db: Any,
+    days: int = 30,
+    reference_date: str | None = None,
+) -> dict[str, Any]:
+    """Detect narrative categories showing signs of exhaustion.
+
+    Exhaustion criteria (all 3 must be met):
+    1. Same narrative occupies ≥30% share for 5+ consecutive days
+    2. Median evidence_score ≤ 0.3
+    3. Average z_score of related anomalies over last 3 days ≤ 1.0
+
+    Args:
+        db: Database instance.
+        days: Analysis window in days.
+        reference_date: Reference date (YYYY-MM-DD).
+
+    Returns:
+        Dict with exhaustion_candidates list and total_detected count.
+    """
+    empty: dict[str, Any] = {
+        "exhaustion_candidates": [],
+        "total_detected": 0,
+    }
+
+    try:
+        narrative_history = db.get_narrative_history(
+            days=days, reference_date=reference_date,
+        )
+    except Exception:
+        logger.debug("Failed to fetch narrative history for exhaustion detection")
+        return empty
+
+    if not narrative_history:
+        return empty
+
+    try:
+        enriched = db.get_enriched_events_history(
+            days=days, reference_date=reference_date,
+        )
+    except Exception:
+        enriched = []
+
+    # Group narrative data by date, then by category
+    daily_cats: dict[str, dict[str, float]] = {}
+    for row in narrative_history:
+        date = row.get("date", "")
+        cat = row.get("category", "")
+        pct = row.get("event_pct", 0.0)
+        if date and cat:
+            daily_cats.setdefault(date, {})[cat] = pct
+
+    sorted_dates = sorted(daily_cats.keys())
+    if len(sorted_dates) < 5:
+        return empty
+
+    # Collect all categories
+    all_categories = set()
+    for cats in daily_cats.values():
+        all_categories.update(cats.keys())
+
+    # Build evidence scores per category from enriched events
+    cat_evidence_scores: dict[str, list[float]] = {}
+    cat_tickers: dict[str, set[str]] = {}
+    for e in enriched:
+        cat = e.get("narrative_category", "")
+        ev_score = e.get("evidence_score")
+        ticker = e.get("ticker", "")
+        if cat:
+            if ev_score is not None:
+                cat_evidence_scores.setdefault(cat, []).append(ev_score)
+            if ticker:
+                cat_tickers.setdefault(cat, set()).add(ticker)
+
+    # Check each category for exhaustion
+    candidates: list[dict[str, Any]] = []
+
+    for cat in all_categories:
+        # Condition 1: 5+ consecutive days with ≥30% share
+        consecutive = 0
+        max_consecutive = 0
+        total_share = 0.0
+        dominant_days = 0
+
+        for date in sorted_dates:
+            pct = daily_cats.get(date, {}).get(cat, 0.0)
+            if pct >= 0.30:
+                consecutive += 1
+                total_share += pct
+                dominant_days += 1
+                max_consecutive = max(max_consecutive, consecutive)
+            else:
+                consecutive = 0
+
+        if max_consecutive < 5:
+            continue
+
+        # Condition 2: Median evidence_score ≤ 0.3
+        ev_scores = cat_evidence_scores.get(cat, [])
+        if ev_scores:
+            sorted_scores = sorted(ev_scores)
+            mid = len(sorted_scores) // 2
+            if len(sorted_scores) % 2 == 0 and len(sorted_scores) >= 2:
+                median_evidence = (sorted_scores[mid - 1] + sorted_scores[mid]) / 2
+            else:
+                median_evidence = sorted_scores[mid]
+        else:
+            median_evidence = 0.0
+
+        if median_evidence > 0.3:
+            continue
+
+        # Condition 3: Average z_score over last 3 days ≤ 1.0
+        last_3_dates = sorted_dates[-3:]
+        tickers = cat_tickers.get(cat, set())
+        z_scores: list[float] = []
+
+        if tickers and last_3_dates:
+            start_date = last_3_dates[0]
+            end_date = last_3_dates[-1]
+            for ticker in tickers:
+                try:
+                    anomalies = db.get_anomalies_by_date_range(
+                        ticker, start_date, end_date,
+                    )
+                    for a in anomalies:
+                        z = a.get("z_score")
+                        if z is not None:
+                            z_scores.append(z)
+                except Exception:
+                    pass
+
+        avg_z_score = (
+            sum(z_scores) / len(z_scores) if z_scores else 0.0
+        )
+
+        if avg_z_score > 1.0:
+            continue
+
+        # All 3 conditions met → exhaustion candidate
+        avg_share = (
+            total_share / dominant_days if dominant_days > 0 else 0.0
+        )
+        candidates.append({
+            "narrative_category": cat,
+            "dominant_days": max_consecutive,
+            "avg_share": round(avg_share, 3),
+            "median_evidence": round(median_evidence, 3),
+            "avg_z_score": round(avg_z_score, 2),
+            "related_tickers": sorted(tickers),
+        })
+
+    return {
+        "exhaustion_candidates": candidates,
+        "total_detected": len(candidates),
+    }
+
+
+def evaluate_exhaustion_outcomes(
+    db: Any,
+    exhaustion_result: dict[str, Any],
+    reference_date: str | None = None,
+    followup_days: int = 14,
+) -> dict[str, Any]:
+    """Evaluate outcomes of previously detected exhaustion candidates.
+
+    Checks whether narrative share dropped by ≥20pt within followup_days.
+    If so, marks as "衰退確認"; otherwise "継続中".
+
+    Args:
+        db: Database instance.
+        exhaustion_result: Output from detect_narrative_exhaustion().
+        reference_date: Date when exhaustion was detected.
+        followup_days: Days after detection to check outcome.
+
+    Returns:
+        Dict with evaluations list and stats.
+    """
+    empty: dict[str, Any] = {
+        "evaluations": [],
+        "stats": {"total": 0, "decay_rate": 0.0},
+    }
+
+    candidates = exhaustion_result.get("exhaustion_candidates", [])
+    if not candidates:
+        return empty
+
+    if reference_date:
+        ref_dt = datetime.strptime(reference_date, "%Y-%m-%d")
+    else:
+        ref_dt = datetime.utcnow()
+
+    followup_ref = (ref_dt + timedelta(days=followup_days)).strftime("%Y-%m-%d")
+
+    try:
+        followup_narrative = db.get_narrative_history(
+            days=followup_days, reference_date=followup_ref,
+        )
+    except Exception:
+        return empty
+
+    # Build average share per category in followup period
+    cat_shares: dict[str, list[float]] = {}
+    for row in followup_narrative:
+        cat = row.get("category", "")
+        pct = row.get("event_pct", 0.0)
+        if cat:
+            cat_shares.setdefault(cat, []).append(pct)
+
+    evaluations: list[dict[str, Any]] = []
+    decay_count = 0
+
+    for cand in candidates:
+        cat = cand["narrative_category"]
+        detected_share = cand["avg_share"]
+
+        shares = cat_shares.get(cat, [])
+        current_share = (
+            sum(shares) / len(shares) if shares else 0.0
+        )
+
+        change_pt = current_share - detected_share
+
+        if change_pt <= -0.20:
+            outcome = "衰退確認"
+            decay_count += 1
+        else:
+            outcome = "継続中"
+
+        evaluations.append({
+            "category": cat,
+            "detected_share": round(detected_share, 3),
+            "current_share": round(current_share, 3),
+            "change_pt": round(change_pt, 3),
+            "outcome": outcome,
+        })
+
+    total = len(evaluations)
+    return {
+        "evaluations": evaluations,
+        "stats": {
+            "total": total,
+            "decay_rate": round(decay_count / total, 3) if total > 0 else 0.0,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # PHASE 4: Early Drift Persistent Tracking
 # ---------------------------------------------------------------------------
 
@@ -741,11 +1324,13 @@ def evaluate_drift_followups(
 
 
 _RESPONSE_TYPES = [
+    "再編型",
+    "疲弊型",
+    "無反応型",
+    "逆行型",
+    "一時的過熱型",
     "即時反応型",
     "遅延持続型",
-    "一時的過熱型",
-    "無反応型",
-    "再編型",
 ]
 
 
@@ -755,16 +1340,20 @@ def compute_response_profile(
     reference_date: str | None = None,
     reaction_lag_result: dict[str, Any] | None = None,
     extinction_result: dict[str, Any] | None = None,
+    exhaustion_result: dict[str, Any] | None = None,
+    direction_data: dict[tuple[str, str], dict] | None = None,
 ) -> dict[str, Any]:
-    """Classify each event's market response type.
+    """Classify each event's market response type (7 types).
 
     Classification rules (priority order):
     1. Ticker in extinction chain's declining category → 再編型
-    2. No lag info or no reaction → 無反応型
-    3. lag_days <= 1 AND SPP < 0.3 → 一時的過熱型
-    4. lag_days <= 1 AND SPP >= 0.3 → 即時反応型
-    5. lag_days >= 3 AND SPP > 0.5 → 遅延持続型
-    6. Default → 即時反応型
+    2. Ticker's category is exhaustion candidate → 疲弊型
+    3. No lag info or no reaction → 無反応型
+    4. direction_alignment == "contrarian" → 逆行型
+    5. lag_days <= 1 AND SPP < 0.3 → 一時的過熱型
+    6. lag_days <= 1 AND SPP >= 0.3 → 即時反応型
+    7. lag_days >= 3 AND SPP > 0.5 → 遅延持続型
+    Default → 即時反応型
 
     Args:
         db: Database instance.
@@ -772,6 +1361,9 @@ def compute_response_profile(
         reference_date: Reference date.
         reaction_lag_result: Output from compute_reaction_lag().
         extinction_result: Output from detect_narrative_extinction_chain().
+        exhaustion_result: Output from detect_narrative_exhaustion().
+        direction_data: Mapping of (ticker, date) to alignment info from
+            reaction lag event_lags.
 
     Returns:
         Dict with event_profiles, distribution, distribution_pct.
@@ -801,7 +1393,6 @@ def compute_response_profile(
     declining_tickers: set[str] = set()
     if extinction_result:
         for chain in extinction_result.get("chains", []):
-            # Events in the declining category's sample_events
             for se in chain.get("sample_events", []):
                 declining_tickers.add(se.get("ticker", ""))
 
@@ -810,6 +1401,23 @@ def compute_response_profile(
     if extinction_result:
         for chain in extinction_result.get("chains", []):
             declining_cats.add(chain.get("declining_cat", ""))
+
+    # Build exhaustion categories set
+    exhaustion_cats: set[str] = set()
+    if exhaustion_result:
+        for cand in exhaustion_result.get("exhaustion_candidates", []):
+            exhaustion_cats.add(cand.get("narrative_category", ""))
+
+    # Build direction alignment lookup from event_lags or direction_data
+    alignment_lookup: dict[tuple[str, str], str] = {}
+    if direction_data:
+        for key, info in direction_data.items():
+            alignment_lookup[key] = info.get("direction_alignment", "unknown")
+    else:
+        # Fall back to event_lags alignment data
+        for el in event_lags:
+            key = (el.get("ticker", ""), el.get("date", ""))
+            alignment_lookup[key] = el.get("direction_alignment", "unknown")
 
     # Get enriched events for SPP data
     try:
@@ -838,14 +1446,25 @@ def compute_response_profile(
         reacted = el.get("reacted", False)
         spp = spp_lookup.get(key, 0.0)
         cat = cat_lookup.get(key, "")
+        alignment = alignment_lookup.get(key, "unknown")
 
-        # Classification (priority order)
+        # Classification (priority order — 7 types)
         if cat in declining_cats or ticker in declining_tickers:
             response_type = "再編型"
             evidence = "ナラティブ消滅チェーンの衰退カテゴリに該当"
+        elif cat in exhaustion_cats:
+            response_type = "疲弊型"
+            evidence = f"ナラティブ疲弊候補カテゴリ({cat})に該当"
         elif not reacted or lag_days is None:
             response_type = "無反応型"
             evidence = f"分析期間内に±{_REACTION_THRESHOLD_PCT}%超の反応なし"
+        elif alignment == "contrarian":
+            response_type = "逆行型"
+            sentiment = el.get("sentiment", "unclear")
+            direction = el.get("price_direction", "flat")
+            evidence = (
+                f"センチメント({sentiment})と価格方向({direction})が逆行"
+            )
         elif lag_days <= 1 and spp < 0.3:
             response_type = "一時的過熱型"
             evidence = f"即時反応(lag={lag_days}日)だが低持続性(SPP={spp:.2f})"
