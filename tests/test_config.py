@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.utils.config import (
+from app.config import (
     AppConfig,
     DetectionConfig,
     HackerNewsConfig,
