@@ -42,7 +42,7 @@ _DIFFUSION_SCORES: dict[str, float] = {
 }
 
 
-def _consecutive_days_factor(event: dict[str, Any], db: Any | None) -> float:
+def _consecutive_days_factor(event: dict[str, Any], db: Any | None, reference_date: str | None = None) -> float:
     """Compute how many consecutive days this ticker appeared in enriched events.
 
     Uses db.get_enriched_events_history(days=7) when a database is available.
@@ -52,6 +52,7 @@ def _consecutive_days_factor(event: dict[str, Any], db: Any | None) -> float:
     Args:
         event: Enriched event dict (must contain "ticker").
         db: Optional database instance with get_enriched_events_history().
+        reference_date: Optional reference date (YYYY-MM-DD) for history lookup.
 
     Returns:
         Factor value between 0.0 and 1.0.
@@ -61,7 +62,7 @@ def _consecutive_days_factor(event: dict[str, Any], db: Any | None) -> float:
 
     ticker = event.get("ticker", "")
     try:
-        history = db.get_enriched_events_history(days=7)
+        history = db.get_enriched_events_history(days=7, reference_date=reference_date)
     except Exception:
         logger.debug("Failed to fetch enriched events history for %s", ticker)
         return 0.2
@@ -87,7 +88,7 @@ def _consecutive_days_factor(event: dict[str, Any], db: Any | None) -> float:
     return factor
 
 
-def _evidence_trend_factor(event: dict[str, Any], db: Any | None) -> float:
+def _evidence_trend_factor(event: dict[str, Any], db: Any | None, reference_date: str | None = None) -> float:
     """Compute whether evidence score is improving relative to historical average.
 
     When db is available, compares the current evidence_score to the average
@@ -99,6 +100,7 @@ def _evidence_trend_factor(event: dict[str, Any], db: Any | None) -> float:
     Args:
         event: Enriched event dict (should contain "evidence_score").
         db: Optional database instance with get_enriched_events_history().
+        reference_date: Optional reference date (YYYY-MM-DD) for history lookup.
 
     Returns:
         Factor value between 0.0 and 1.0.
@@ -110,7 +112,7 @@ def _evidence_trend_factor(event: dict[str, Any], db: Any | None) -> float:
 
     ticker = event.get("ticker", "")
     try:
-        history = db.get_enriched_events_history(days=7)
+        history = db.get_enriched_events_history(days=7, reference_date=reference_date)
     except Exception:
         logger.debug("Failed to fetch enriched events history for %s", ticker)
         return float(current_ev)
@@ -222,7 +224,7 @@ def _sector_propagation_factor(event: dict[str, Any]) -> float:
     return factor
 
 
-def compute_spp(event: dict[str, Any], db: Any | None = None, weights: dict[str, float] | None = None) -> float:
+def compute_spp(event: dict[str, Any], db: Any | None = None, weights: dict[str, float] | None = None, reference_date: str | None = None) -> float:
     """Compute Structural Persistence Probability for a single event.
 
     SPP is a composite score (0.0-1.0) that estimates the likelihood
@@ -235,14 +237,17 @@ def compute_spp(event: dict[str, Any], db: Any | None = None, weights: dict[str,
                "diffusion_pattern", "propagation_targets", and "z_score".
         db: Optional database instance for historical lookups.
             Expected to provide get_enriched_events_history(days=N).
+        weights: Optional custom SPP weights dict.
+        reference_date: Optional reference date (YYYY-MM-DD) for historical
+            lookups. When None, defaults to current date.
 
     Returns:
         SPP value as a float rounded to 3 decimal places (0.0-1.0).
     """
     w = weights or _WEIGHTS
 
-    consecutive = _consecutive_days_factor(event, db)
-    evidence = _evidence_trend_factor(event, db)
+    consecutive = _consecutive_days_factor(event, db, reference_date=reference_date)
+    evidence = _evidence_trend_factor(event, db, reference_date=reference_date)
     price = _price_trend_factor(event)
     media = _media_diffusion_factor(event)
     propagation = _sector_propagation_factor(event)
@@ -275,19 +280,23 @@ def compute_spp_batch(
     events: list[dict[str, Any]],
     db: Any | None = None,
     weights: dict[str, float] | None = None,
+    reference_date: str | None = None,
 ) -> list[dict[str, Any]]:
     """Compute SPP for a batch of events, adding the spp field to each.
 
     Args:
         events: List of enriched event dicts.
         db: Optional database instance for historical lookups.
+        weights: Optional custom SPP weights dict.
+        reference_date: Optional reference date (YYYY-MM-DD) for historical
+            lookups.
 
     Returns:
         The same list of event dicts, each augmented with an "spp" key
         containing the computed SPP value (float, 0.0-1.0, 3 decimals).
     """
     for event in events:
-        event["spp"] = compute_spp(event, db=db, weights=weights)
+        event["spp"] = compute_spp(event, db=db, weights=weights, reference_date=reference_date)
 
     logger.info("Computed SPP for %d events", len(events))
     return events

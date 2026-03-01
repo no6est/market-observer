@@ -53,6 +53,17 @@ class TestComputeMonthlyAnalysis:
             "narrative_trend",
             "regime_history",
             "period",
+            # v7: market response structure
+            "reaction_lag",
+            "watch_ticker_followup",
+            "extinction_chains",
+            "drift_evaluation",
+            "response_profile",
+            # v8: direction-aware market response
+            "direction_analysis",
+            "regime_cross",
+            "exhaustion",
+            "exhaustion_evaluation",
         }
         assert set(result.keys()) == expected_keys
 

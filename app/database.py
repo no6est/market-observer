@@ -355,6 +355,30 @@ class Database:
             logger.info("Cleared %d recent anomalies for fresh detection", deleted)
         return deleted
 
+    def get_anomalies_by_date_range(
+        self, ticker: str, start_date: str, end_date: str,
+    ) -> list[dict[str, Any]]:
+        """Get anomalies for a ticker within a date range.
+
+        Args:
+            ticker: Ticker symbol.
+            start_date: Start date string (YYYY-MM-DD).
+            end_date: End date string (YYYY-MM-DD).
+
+        Returns:
+            List of anomaly dicts ordered by detected_at.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT ticker, signal_type, score, z_score, value,
+                          mean, std, summary, detected_at
+                   FROM anomalies
+                   WHERE ticker = ? AND detected_at >= ? AND detected_at <= ?
+                   ORDER BY detected_at""",
+                (ticker, start_date, end_date + " 23:59:59"),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     # ---- Themes ----
 
     def upsert_theme(self, theme: dict[str, Any]) -> None:
@@ -464,7 +488,7 @@ class Database:
                           evidence_score, market_evidence,
                           media_evidence, official_evidence,
                           tier1_count, tier2_count, sns_count,
-                          diffusion_pattern, spp
+                          diffusion_pattern, spp, regime
                    FROM enriched_events
                    WHERE date >= ? AND date <= ?
                    ORDER BY date DESC, sis DESC""",
@@ -613,6 +637,53 @@ class Database:
                     WHERE {where}
                     ORDER BY date DESC""",
                 params,
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_price_data_range(
+        self, ticker: str, start_date: str, end_date: str,
+    ) -> list[dict[str, Any]]:
+        """Get price data for a ticker within a date range.
+
+        Args:
+            ticker: Ticker symbol.
+            start_date: Start date string (YYYY-MM-DD).
+            end_date: End date string (YYYY-MM-DD).
+
+        Returns:
+            List of price data dicts ordered by timestamp.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT ticker, timestamp, open, high, low, close, volume
+                   FROM price_data
+                   WHERE ticker = ? AND timestamp >= ? AND timestamp <= ?
+                   ORDER BY timestamp""",
+                (ticker, start_date, end_date + " 23:59:59"),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_drift_hypotheses(
+        self, days_old: int = 30, reference_date: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get drift_pending hypotheses older than days_old.
+
+        Args:
+            days_old: Minimum age in days for the hypothesis.
+            reference_date: Reference date for cutoff calculation.
+
+        Returns:
+            List of hypothesis dicts with drift_pending status.
+        """
+        cutoff = self._cutoff_str(reference_date=reference_date, days=days_old)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT id, date, ticker, hypothesis, evidence, confidence,
+                          status, evaluation_date, evaluation_result
+                   FROM hypothesis_logs
+                   WHERE status = 'drift_pending' AND date <= ?
+                   ORDER BY date""",
+                (cutoff[:10],),
             ).fetchall()
         return [dict(r) for r in rows]
 

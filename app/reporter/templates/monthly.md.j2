@@ -257,4 +257,222 @@
 
 ---
 
+## 9. ナラティブ→価格反応ラグ
+
+{% if analysis.reaction_lag and analysis.reaction_lag.stats and analysis.reaction_lag.stats.total_events > 0 -%}
+| 指標 | 値 |
+|------|-----|
+| 分析イベント数 | {{ analysis.reaction_lag.stats.total_events }} |
+| 平均反応ラグ | {{ analysis.reaction_lag.stats.avg_lag }}日 |
+| 中央値ラグ | {{ analysis.reaction_lag.stats.median_lag }}日 |
+| 即時反応率（≤1日） | {{ "%.0f"|format(analysis.reaction_lag.stats.immediate_rate * 100) }}% |
+| 遅延反応率（≥3日） | {{ "%.0f"|format(analysis.reaction_lag.stats.delayed_rate * 100) }}% |
+| 未反応率 | {{ "%.0f"|format(analysis.reaction_lag.stats.no_reaction_rate * 100) }}% |
+
+{% if analysis.reaction_lag.stats.aligned_rate is defined or analysis.reaction_lag.stats.contrarian_rate is defined -%}
+### 方向性統計
+
+| 指標 | 値 |
+|------|-----|
+| アライメント率 | {{ "%.0f"|format((analysis.reaction_lag.stats.aligned_rate or 0) * 100) }}% |
+| 逆行率 | {{ "%.0f"|format((analysis.reaction_lag.stats.contrarian_rate or 0) * 100) }}% |
+{% endif %}
+
+{% if analysis.reaction_lag.histogram_data -%}
+### ラグ分布
+
+| バケット | 件数 |
+|----------|------|
+{% for label, count in analysis.reaction_lag.histogram_data -%}
+| {{ label }} | {{ count }} |
+{% endfor %}
+{% endif -%}
+{% else -%}
+反応ラグのデータはありません。
+{% endif %}
+
+---
+
+## 10. 前月ウォッチ銘柄フォローアップ
+
+{% if analysis.watch_ticker_followup and analysis.watch_ticker_followup.available -%}
+| 銘柄 | 前月SPP | 今月SPP | 価格変化 | ナラティブシェア変化 | 判定 |
+|------|---------|---------|----------|---------------------|------|
+{% for f in analysis.watch_ticker_followup.followups -%}
+| {{ f.ticker }} | {{ "%.2f"|format(f.prev_spp) }} | {{ "%.2f"|format(f.curr_spp) }} | {{ "%+.1f"|format(f.price_change_pct) }}% | {{ "%+.3f"|format(f.narrative_share_change) }} | {{ f.outcome }} |
+{% endfor %}
+
+{% if analysis.watch_ticker_followup.outcome_distribution -%}
+### 判定分布
+
+{% for outcome, count in analysis.watch_ticker_followup.outcome_distribution.items() -%}
+- {{ outcome }}: {{ count }}件
+{% endfor %}
+{% endif -%}
+{% else -%}
+前月ウォッチ銘柄のフォローアップデータはありません（前月データ不足または初回分析）。
+{% endif %}
+
+---
+
+## 11. ナラティブ消滅・再編連鎖
+
+> **注意**: 本セクションはカテゴリ間の時系列的共起パターンを示すものであり、因果関係を主張するものではありません。あるカテゴリの減少と別のカテゴリの増加が同時に観測されたことを記述しています。
+
+{% if analysis.extinction_chains and analysis.extinction_chains.chains -%}
+{% for chain in analysis.extinction_chains.chains -%}
+### {{ chain.declining_cat }} → {{ chain.rising_cat }}
+
+- **共有キーワード**: {{ chain.shared_keywords | join(', ') }}
+- **共起スコア**: {{ chain.overlap_score }}
+{% if chain.sample_events -%}
+- **関連イベント例**:
+{% for se in chain.sample_events -%}
+  - {{ se.date }} {{ se.ticker }}: {{ se.summary }}
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+
+{% if analysis.extinction_chains.reorganization_map -%}
+### 再編マップ
+
+{% for src, dsts in analysis.extinction_chains.reorganization_map.items() -%}
+- **{{ src }}** → {{ dsts | join(', ') }}
+{% endfor %}
+{% endif -%}
+{% else -%}
+ナラティブ消滅・再編連鎖は検出されませんでした。
+{% endif %}
+
+---
+
+## 12. Early Drift 追跡評価
+
+{% if analysis.drift_evaluation and analysis.drift_evaluation.evaluations -%}
+| 銘柄 | 検出日 | Tier1到達 | 価格反応 | 判定 |
+|------|--------|-----------|----------|------|
+{% for d in analysis.drift_evaluation.evaluations -%}
+| {{ d.ticker }} | {{ d.date }} | {{ "○" if d.tier1_arrived else "×" }} | {{ "○" if d.price_reacted else "×" }} | {{ d.outcome }} |
+{% endfor %}
+
+{% if analysis.drift_evaluation.stats -%}
+### 統計
+
+| 指標 | 値 |
+|------|-----|
+| 評価対象 | {{ analysis.drift_evaluation.stats.total }}件 |
+| Tier1到達率 | {{ "%.0f"|format(analysis.drift_evaluation.stats.tier1_arrival_rate * 100) }}% |
+| 価格反応率 | {{ "%.0f"|format(analysis.drift_evaluation.stats.price_reaction_rate * 100) }}% |
+| Drift成功率 | {{ "%.0f"|format(analysis.drift_evaluation.stats.drift_success_rate * 100) }}% |
+{% endif -%}
+{% else -%}
+Early Drift追跡の評価対象はありません（初回分析または該当なし）。
+{% endif %}
+
+---
+
+## 13. 市場応答プロファイル
+
+{% if analysis.response_profile and analysis.response_profile.distribution -%}
+### 応答型分布
+
+| 応答型 | 件数 | 割合 |
+|--------|------|------|
+{% for rtype, count in analysis.response_profile.distribution.items() -%}
+| {{ rtype }} | {{ count }} | {{ "%.0f"|format(analysis.response_profile.distribution_pct.get(rtype, 0) * 100) }}% |
+{% endfor %}
+
+{% if analysis.response_profile.event_profiles -%}
+### 個別イベント応答
+
+{% for ep in analysis.response_profile.event_profiles[:20] -%}
+- **{{ ep.ticker }}** ({{ ep.date }}): {{ ep.response_type }} — {{ ep.evidence }}
+{% endfor %}
+{% if analysis.response_profile.event_profiles | length > 20 -%}
+*（以下 {{ analysis.response_profile.event_profiles | length - 20 }}件省略）*
+{% endif -%}
+{% endif -%}
+{% else -%}
+市場応答プロファイルのデータはありません。
+{% endif %}
+
+---
+
+## 14. 方向性分析詳細
+
+{% if analysis.direction_analysis -%}
+{% set reacted_lags = analysis.direction_analysis.event_lags | selectattr("reacted") | list -%}
+{% if reacted_lags -%}
+| 銘柄 | 日付 | 価格方向 | センチメント | アライメント | 反応率 |
+|------|------|----------|-------------|-------------|--------|
+{% for el in reacted_lags[:20] -%}
+| {{ el.ticker }} | {{ el.date }} | {{ el.price_direction }} | {{ el.sentiment }} | {{ el.direction_alignment }} | {{ "%+.1f"|format(el.reaction_pct) }}% |
+{% endfor %}
+{% if reacted_lags | length > 20 -%}
+*（以下 {{ reacted_lags | length - 20 }}件省略）*
+{% endif %}
+
+**反応イベント数**: {{ reacted_lags | length }} / {{ analysis.direction_analysis.event_lags | length }}件
+{% else -%}
+反応のあるイベントはありませんでした。
+{% endif -%}
+{% else -%}
+方向性分析のデータはありません。
+{% endif %}
+
+---
+
+## 15. Regime × Reaction Lag クロス分析
+
+{% if analysis.regime_cross and analysis.regime_cross.regime_stats -%}
+| レジーム | イベント数 | 平均ラグ | 即時反応率 | 未反応率 |
+|----------|-----------|----------|-----------|---------|
+{% for regime, stats in analysis.regime_cross.regime_stats.items() -%}
+| {{ regime_ja.get(regime, regime) }} | {{ stats.event_count }} | {{ stats.avg_lag }}日 | {{ "%.0f"|format(stats.immediate_rate * 100) }}% | {{ "%.0f"|format(stats.no_reaction_rate * 100) }}% |
+{% endfor %}
+
+{% if analysis.regime_cross.notable_patterns -%}
+### 特筆パターン
+
+{% for p in analysis.regime_cross.notable_patterns -%}
+- {{ p }}
+{% endfor %}
+{% endif -%}
+{% else -%}
+Regime × Reaction Lag クロス分析のデータはありません。
+{% endif %}
+
+---
+
+## 16. ナラティブ疲弊検出
+
+{% if analysis.exhaustion and analysis.exhaustion.exhaustion_candidates -%}
+### 疲弊候補
+
+| カテゴリ | 連続支配日数 | 平均シェア | 裏付け中央値 | 平均z_score | 関連銘柄 |
+|----------|------------|-----------|------------|------------|---------|
+{% for c in analysis.exhaustion.exhaustion_candidates -%}
+| {{ c.narrative_category }} | {{ c.dominant_days }}日 | {{ "%.0f"|format(c.avg_share * 100) }}% | {{ "%.2f"|format(c.median_evidence) }} | {{ "%.2f"|format(c.avg_z_score) }} | {{ c.related_tickers | join(', ') }} |
+{% endfor %}
+
+{% if analysis.exhaustion_evaluation and analysis.exhaustion_evaluation.evaluations -%}
+### 事後評価
+
+| カテゴリ | 検出時シェア | 現在シェア | 変化(pt) | 判定 |
+|----------|------------|-----------|---------|------|
+{% for e in analysis.exhaustion_evaluation.evaluations -%}
+| {{ e.category }} | {{ "%.0f"|format(e.detected_share * 100) }}% | {{ "%.0f"|format(e.current_share * 100) }}% | {{ "%+.0f"|format(e.change_pt * 100) }} | {{ e.outcome }} |
+{% endfor %}
+
+{% if analysis.exhaustion_evaluation.stats -%}
+**衰退確認率**: {{ "%.0f"|format(analysis.exhaustion_evaluation.stats.decay_rate * 100) }}%
+{% endif -%}
+{% endif -%}
+{% else -%}
+ナラティブ疲弊候補は検出されませんでした（正常状態）。
+{% endif %}
+
+---
+
 *レポート生成日時: {{ generated_at }}*
