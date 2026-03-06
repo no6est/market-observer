@@ -15,6 +15,15 @@
 
 ---
 
+{% if story_summary -%}
+## ストーリーサマリー
+
+{{ story_summary }}
+
+---
+
+{% endif -%}
+
 {% if narrative_index -%}
 ## ナラティブ分布
 
@@ -41,6 +50,56 @@
 - {{ w }}
 {% endfor -%}
 {% endif %}
+
+---
+
+{% endif -%}
+
+{% if narrative_track_result -%}
+## ナラティブ継続性
+
+{% if narrative_track_result.active_tracks -%}
+| ナラティブ | カテゴリ | 継続日数 | ステータス | ピークSIS | 平均SPP |
+|-----------|----------|---------|-----------|----------|---------|
+{% for t in narrative_track_result.active_tracks -%}
+| {{ t.category }}（{{ t.keywords[:3] | join(", ") if t.keywords else "-" }}） | {{ t.category }} | {{ t.active_days }}日 | {{ {"emerging": "出現", "expanding": "拡大中", "peak": "ピーク", "cooling": "冷却中"}.get(t.status, t.status) }} | {{ "%.3f"|format(t.peak_sis) }} | {{ "%.2f"|format(t.avg_spp) }} |
+{% endfor -%}
+{% else -%}
+アクティブなナラティブトラックはありません。
+{% endif %}
+
+- **新規トラック**: {{ narrative_track_result.new_count }}件
+- **更新トラック**: {{ narrative_track_result.updated_count }}件
+
+---
+
+{% endif -%}
+
+{% if narrative_track_result and narrative_track_result.active_tracks -%}
+## ナラティブライフサイクル
+
+{% set status_ja = {"emerging": "出現", "expanding": "拡大中", "peak": "ピーク", "cooling": "冷却中", "inactive": "終了"} -%}
+{% for t in narrative_track_result.active_tracks -%}
+### {{ t.category }}
+- **ステータス**: {{ status_ja.get(t.status, t.status) }}
+- **継続日数**: {{ t.active_days }}日（{{ t.start_date }} ～ {{ t.last_seen }}）
+- **SIS推移**: {{ t.sis_history | join(" → ") if t.sis_history else "N/A" }}
+- **主要銘柄**: {{ t.primary_tickers[:5] | join(", ") if t.primary_tickers else "N/A" }}
+
+{% endfor -%}
+
+---
+
+{% endif -%}
+
+{% if narrative_momentum -%}
+## ナラティブモメンタム
+
+| カテゴリ | 本日 | 前日 | モメンタム | 分類 |
+|----------|------|------|----------|------|
+{% for m in narrative_momentum -%}
+| {{ m.category }} | {{ m.today_count }}件 | {{ m.yesterday_count }}件 | {{ "%+.1f"|format(m.momentum * 100) }}% | {{ m.classification }} |
+{% endfor -%}
 
 ---
 
@@ -85,6 +144,21 @@
 {% endif %}
 
 ---
+
+{% if narrative_graph -%}
+## ナラティブグラフ
+
+{% for entry in narrative_graph -%}
+**{{ entry.category }}**（{{ entry.event_count }}件）
+{% for t in entry.tickers -%}
+{{ "└──" if loop.last else "├──" }} {{ t.ticker }} (SIS: {{ "%.2f"|format(t.sis) }}, {{ {"strong": "強", "moderate": "中", "weak": "弱"}.get(t.strength, t.strength) }})
+{% endfor %}
+
+{% endfor -%}
+
+---
+
+{% endif -%}
 
 ## 因果チェーン
 
@@ -189,6 +263,21 @@
 
 {% endif -%}
 
+{% if regime_narrative_analysis -%}
+## レジーム×ナラティブ分析
+
+> 現在のレジーム: **{{ {"normal": "平時", "high_vol": "高ボラティリティ", "tightening": "引き締め"}.get(regime_narrative_analysis.regime, regime_narrative_analysis.regime) }}**
+
+| カテゴリ | イベント数 | 平均SIS | データ充足 |
+|----------|-----------|---------|----------|
+{% for c in regime_narrative_analysis.categories -%}
+| {{ c.category }} | {{ c.event_count }} | {{ "%.3f"|format(c.avg_sis) }} | {{ "充足" if c.data_sufficient else "データ不足" }} |
+{% endfor -%}
+
+---
+
+{% endif -%}
+
 {% if echo_info -%}
 ## メディア・エコーチェンバー評価
 
@@ -233,14 +322,51 @@
 {% if early_drift_candidates -%}
 ## Early Drift（初動検出）
 
-> ※ カテゴリ比率<20%、z-score≧1.5、SNS→Tier2伝播、価格未反応の全条件を満たすイベント
+> ※ カテゴリ比率<20%、z-score≧1.5、SNS→Tier2伝播、価格未反応の全条件を満たすイベント（Strong）
 
 {% for d in early_drift_candidates -%}
 ### {{ loop.index }}. {{ d.ticker }}（{{ d.narrative_category }}）
+- **強度**: Strong
 - **カテゴリ比率**: {{ "%.0f"|format(d.category_pct * 100) }}%（z-score={{ "%.2f"|format(d.z_score) }}）
 - **伝播**: {{ d.diffusion_pattern }}
 - **市場反応**: 未反応
 {% if d.summary %}- **サマリー**: {{ d.summary }}{% endif %}
+
+{% endfor -%}
+
+---
+
+{% endif -%}
+
+{% if weak_drift_candidates_v2 -%}
+## 弱い初動シグナル
+
+> ※ カテゴリ比率<30%、z-score≧1.2、言及急増を検出（Weak）。SNS→Tier2伝播・価格未反応は不要。
+
+{% for d in weak_drift_candidates_v2 -%}
+### {{ loop.index }}. {{ d.ticker }}（{{ d.narrative_category }}）
+- **強度**: Weak
+- **カテゴリ比率**: {{ "%.0f"|format(d.category_pct * 100) }}%（z-score={{ "%.2f"|format(d.z_score) }}）
+- **シグナル**: {{ {"mention_surge": "言及急増", "price_change": "価格変動", "volume_spike": "出来高急増"}.get(d.signal_type, d.signal_type) }}
+{% if d.summary %}- **サマリー**: {{ d.summary }}{% endif %}
+
+{% endfor -%}
+
+---
+
+{% endif -%}
+
+{% if narrative_track_result and narrative_track_result.cooling_tracks -%}
+## ナラティブ冷却
+
+> 前日まで継続していたナラティブで本日イベントが検出されなかったもの
+
+{% for c in narrative_track_result.cooling_tracks -%}
+### {{ c.category }}
+- **継続日数**: {{ c.active_days }}日（最終観測: {{ c.last_seen }}）
+- **ピークSIS**: {{ "%.3f"|format(c.peak_sis) }}
+- **主要銘柄**: {{ c.primary_tickers[:5] | join(", ") if c.primary_tickers else "N/A" }}
+- **状態**: 冷却中（本日イベントなし）
 
 {% endfor -%}
 

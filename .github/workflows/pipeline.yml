@@ -49,17 +49,20 @@ jobs:
         run: |
           gh release download db-snapshot --pattern market_obs.db --dir data/ || true
 
+      - name: Set report date
+        run: echo "REPORT_DATE=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+
       - name: Run pipeline
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          echo "Running pipeline: $PIPELINE"
+          echo "Running pipeline: $PIPELINE (date: $REPORT_DATE)"
           if [ "$PIPELINE" = "daily" ]; then
-            python -m app run-daily
+            python -m app run-daily --date "$REPORT_DATE"
           elif [ "$PIPELINE" = "weekly" ]; then
-            python -m app run-weekly
+            python -m app run-weekly --date "$REPORT_DATE"
           elif [ "$PIPELINE" = "monthly" ]; then
-            python -m app run-monthly
+            python -m app run-monthly --date "$REPORT_DATE"
           fi
 
       - name: Ensure release exists
@@ -75,9 +78,25 @@ jobs:
         run: |
           gh release upload db-snapshot data/market_obs.db --clobber
 
+      - name: Collect report files
+        run: |
+          mkdir -p _output
+          if [ "$PIPELINE" = "daily" ]; then
+            cp -v reports/${REPORT_DATE}_structural.md _output/ 2>/dev/null || true
+          elif [ "$PIPELINE" = "weekly" ]; then
+            cp -v reports/${REPORT_DATE}_weekly.md _output/ 2>/dev/null || true
+            cp -v reports/${REPORT_DATE}_narrative_trend.png _output/ 2>/dev/null || true
+            cp -v reports/${REPORT_DATE}_media_diffusion.png _output/ 2>/dev/null || true
+          elif [ "$PIPELINE" = "monthly" ]; then
+            cp -v reports/${REPORT_DATE}_monthly.md _output/ 2>/dev/null || true
+            cp -v reports/${REPORT_DATE}_reaction_lag.png _output/ 2>/dev/null || true
+          fi
+          ls -la _output/
+
       - name: Upload reports as artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: reports-${{ env.PIPELINE }}-${{ github.run_id }}
-          path: reports/
+          name: report-${{ env.PIPELINE }}-${{ env.REPORT_DATE }}
+          path: _output/
           retention-days: 30
+          if-no-files-found: warn

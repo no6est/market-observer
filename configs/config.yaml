@@ -134,3 +134,11 @@ regime:
 echo_chamber:
   similarity_threshold: 0.7
   min_correction: 0.5
+
+narrative_track:
+  keyword_overlap_threshold: 0.5
+  ticker_overlap_threshold: 0.3
+  cooling_inactive_days: 3
+  weak_drift_z_threshold: 1.2
+  weak_drift_category_ratio: 0.30
+  use_embeddings: false
