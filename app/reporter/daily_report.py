@@ -85,6 +85,8 @@ def generate_structural_report(
     narrative_graph: list[dict[str, Any]] | None = None,
     regime_narrative_analysis: dict[str, Any] | None = None,
     story_summary: str | None = None,
+    narrative_transitions: list[dict[str, Any]] | None = None,
+    transition_outlook: dict[str, Any] | None = None,
 ) -> str:
     """Generate a structural change observation report.
 
@@ -136,6 +138,8 @@ def generate_structural_report(
         narrative_graph=narrative_graph or [],
         regime_narrative_analysis=regime_narrative_analysis,
         story_summary=story_summary or "",
+        narrative_transitions=narrative_transitions or [],
+        transition_outlook=transition_outlook,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 

@@ -68,6 +68,73 @@ def compute_category_momentum(
     return results
 
 
+def compute_weighted_category_momentum(
+    today_events: list[dict[str, Any]],
+    yesterday_events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Compute SRS-weighted momentum for each narrative category.
+
+    Same logic as compute_category_momentum but uses SRS weights
+    instead of raw counts.
+
+    Returns list of dicts with: category, today_count, yesterday_count,
+    today_weight, yesterday_weight, momentum, classification.
+    """
+    today_weights: dict[str, float] = defaultdict(float)
+    yesterday_weights: dict[str, float] = defaultdict(float)
+    today_counts: dict[str, int] = defaultdict(int)
+    yesterday_counts: dict[str, int] = defaultdict(int)
+
+    for e in today_events:
+        cat = e.get("narrative_category", "")
+        if cat:
+            today_weights[cat] += e.get("srs", 1.0)
+            today_counts[cat] += 1
+    for e in yesterday_events:
+        cat = e.get("narrative_category", "")
+        if cat:
+            yesterday_weights[cat] += e.get("srs", 1.0)
+            yesterday_counts[cat] += 1
+
+    all_cats = set(today_weights) | set(yesterday_weights)
+    results = []
+    for cat in sorted(all_cats):
+        tw = today_weights.get(cat, 0.0)
+        yw = yesterday_weights.get(cat, 0.0)
+        tc = today_counts.get(cat, 0)
+        yc = yesterday_counts.get(cat, 0)
+
+        if yw == 0 and tw > 0:
+            classification = "新出"
+            momentum = float(tw)
+        elif tw == 0 and yw > 0:
+            classification = "消滅"
+            momentum = -1.0
+        else:
+            momentum = (tw - yw) / max(yw, 1.0)
+            if momentum > 1.0:
+                classification = "急拡大"
+            elif momentum >= 0.3:
+                classification = "拡大中"
+            elif momentum >= -0.3:
+                classification = "安定"
+            else:
+                classification = "縮小"
+
+        results.append({
+            "category": cat,
+            "today_count": tc,
+            "yesterday_count": yc,
+            "today_weight": round(tw, 3),
+            "yesterday_weight": round(yw, 3),
+            "momentum": round(momentum, 3),
+            "classification": classification,
+        })
+
+    results.sort(key=lambda x: abs(x["momentum"]), reverse=True)
+    return results
+
+
 def detect_weak_drift(
     enriched_events: list[dict[str, Any]],
     narrative_health: dict[str, Any] | None,

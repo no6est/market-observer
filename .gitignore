@@ -35,5 +35,8 @@ htmlcov/
 # Claude
 .claude/
 
+# Local-only docs (not tracked in git)
+docs/local/
+
 # Legacy source (refactored to app/)
 src/

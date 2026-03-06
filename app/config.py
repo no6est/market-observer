@@ -96,6 +96,23 @@ class EchoChamberConfig(BaseModel):
     min_correction: float = 0.5
 
 
+class SourceReliabilityConfig(BaseModel):
+    tier_weights: dict[str, float] = Field(default_factory=lambda: {
+        "tier1_direct": 1.0, "sns_to_tier1": 0.85,
+        "sns_to_tier2": 0.60, "sns_only": 0.30, "no_coverage": 0.20,
+    })
+    diversity_max_bonus: float = 0.20
+    diversity_source_cap: int = 5
+    echo_penalty_factor: float = 0.20
+
+
+class NarrativeTransitionConfig(BaseModel):
+    declining_threshold: float = -0.3
+    rising_threshold: float = 0.3
+    history_days: int = 90
+    top_n_outlook: int = 5
+
+
 class AppConfig(BaseModel):
     """Root application configuration."""
 
@@ -113,6 +130,8 @@ class AppConfig(BaseModel):
     regime: RegimeConfig = Field(default_factory=RegimeConfig)
     echo_chamber: EchoChamberConfig = Field(default_factory=EchoChamberConfig)
     narrative_track: NarrativeTrackConfig = Field(default_factory=NarrativeTrackConfig)
+    source_reliability: SourceReliabilityConfig = Field(default_factory=SourceReliabilityConfig)
+    narrative_transition: NarrativeTransitionConfig = Field(default_factory=NarrativeTransitionConfig)
 
     @property
     def database_path(self) -> str:

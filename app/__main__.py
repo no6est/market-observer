@@ -541,6 +541,19 @@ def run_daily(
         for e in enriched_events:
             apply_echo_correction(e, echo_info)
 
+        # Compute SRS (Source Reliability Score) for all enriched events
+        try:
+            from app.enrichers.source_reliability import apply_srs_to_events
+            apply_srs_to_events(
+                enriched_events,
+                tier_weights=cfg.source_reliability.tier_weights,
+                diversity_max_bonus=cfg.source_reliability.diversity_max_bonus,
+                diversity_source_cap=cfg.source_reliability.diversity_source_cap,
+                echo_penalty_factor=cfg.source_reliability.echo_penalty_factor,
+            )
+        except Exception:
+            logger.debug("Failed to compute SRS")
+
         # Compute SPP for all enriched events (with regime-adaptive weights)
         compute_spp_batch(enriched_events, db=db, weights=spp_weights)
 
@@ -662,12 +675,49 @@ def run_daily(
         weak_drift_candidates_v2 = []
         narrative_graph = []
         try:
-            from app.enrichers.narrative_momentum import compute_category_momentum, detect_weak_drift
+            from app.enrichers.narrative_momentum import compute_weighted_category_momentum, detect_weak_drift
             yesterday_events = db.get_enriched_events_history(days=2, reference_date=_today)
             yesterday_events = [e for e in yesterday_events if e.get("date") != _today]
-            narrative_momentum = compute_category_momentum(enriched_events, yesterday_events)
+            narrative_momentum = compute_weighted_category_momentum(enriched_events, yesterday_events)
         except Exception:
             logger.debug("Failed to compute narrative momentum")
+        # --- Narrative Transition Detection ---
+        narrative_transitions = []
+        transition_outlook = None
+        try:
+            from app.enrichers.narrative_transition import (
+                detect_narrative_transitions,
+                build_transition_outlook,
+            )
+            narrative_transitions = detect_narrative_transitions(
+                narrative_momentum,
+                declining_threshold=cfg.narrative_transition.declining_threshold,
+                rising_threshold=cfg.narrative_transition.rising_threshold,
+            )
+            for t in narrative_transitions:
+                db.insert_narrative_transition(
+                    _today,
+                    t["from_category"],
+                    t["to_category"],
+                    t["from_momentum"],
+                    t["to_momentum"],
+                )
+            transition_history = db.get_transition_history(
+                days=cfg.narrative_transition.history_days,
+                reference_date=_today,
+            )
+            transition_outlook = build_transition_outlook(
+                narrative_momentum,
+                transition_history,
+                top_n=cfg.narrative_transition.top_n_outlook,
+            )
+            if narrative_transitions:
+                console.print(
+                    f"  [cyan]ナラティブ遷移: {len(narrative_transitions)}件検出"
+                )
+        except Exception:
+            logger.debug("Failed to detect narrative transitions")
+
         try:
             from app.enrichers.narrative_momentum import detect_weak_drift
             weak_drift_candidates_v2 = detect_weak_drift(
@@ -741,6 +791,8 @@ def run_daily(
             narrative_graph=narrative_graph,
             regime_narrative_analysis=regime_narrative_analysis,
             story_summary=story_summary,
+            narrative_transitions=narrative_transitions,
+            transition_outlook=transition_outlook,
         )
 
         output_dir = Path(cfg.report.output_dir)

@@ -171,6 +171,19 @@ CREATE TABLE IF NOT EXISTS narrative_tracks (
 
 CREATE INDEX IF NOT EXISTS idx_narrative_tracks_status ON narrative_tracks(status);
 CREATE INDEX IF NOT EXISTS idx_narrative_tracks_last_seen ON narrative_tracks(last_seen);
+
+CREATE TABLE IF NOT EXISTS narrative_transitions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    date          TEXT NOT NULL,
+    from_category TEXT NOT NULL,
+    to_category   TEXT NOT NULL,
+    from_momentum REAL NOT NULL,
+    to_momentum   REAL NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(date, from_category, to_category)
+);
+CREATE INDEX IF NOT EXISTS idx_narrative_transitions_date
+    ON narrative_transitions(date);
 """
 
 
@@ -191,7 +204,7 @@ class Database:
                         "tier1_count", "tier2_count", "sns_count",
                         "diffusion_pattern", "spp",
                         "echo_chamber_ratio", "independent_source_count",
-                        "regime"):
+                        "regime", "srs"):
                 col_type = (
                     "TEXT" if col in ("diffusion_pattern", "regime")
                     else "INTEGER" if col == "independent_source_count"
@@ -469,8 +482,8 @@ class Database:
                     evidence_score, market_evidence, media_evidence,
                     official_evidence,
                     tier1_count, tier2_count, sns_count,
-                    diffusion_pattern, spp)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    diffusion_pattern, spp, srs)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(date, ticker, signal_type) DO UPDATE SET
                        shock_type = excluded.shock_type,
                        sis = excluded.sis,
@@ -486,6 +499,7 @@ class Database:
                        sns_count = excluded.sns_count,
                        diffusion_pattern = excluded.diffusion_pattern,
                        spp = excluded.spp,
+                       srs = excluded.srs,
                        created_at = datetime('now')""",
                 (date, event.get("ticker"), event.get("signal_type"),
                  event.get("shock_type"), event.get("sis"),
@@ -495,7 +509,7 @@ class Database:
                  event.get("media_evidence"), event.get("official_evidence"),
                  event.get("tier1_count"), event.get("tier2_count"),
                  event.get("sns_count"), event.get("diffusion_pattern"),
-                 event.get("spp")),
+                 event.get("spp"), event.get("srs")),
             )
 
     def get_enriched_events_history(self, days: int = 7, reference_date: str | None = None) -> list[dict[str, Any]]:
@@ -863,6 +877,46 @@ class Database:
                    FROM narrative_snapshots
                    WHERE date >= ? AND date <= ?
                    ORDER BY date DESC, event_pct DESC""",
+                (cutoff[:10], upper),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ---- Narrative Transitions ----
+
+    def insert_narrative_transition(
+        self,
+        date: str,
+        from_category: str,
+        to_category: str,
+        from_momentum: float,
+        to_momentum: float,
+    ) -> None:
+        """Insert or update a narrative transition record."""
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO narrative_transitions
+                   (date, from_category, to_category, from_momentum, to_momentum)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(date, from_category, to_category) DO UPDATE SET
+                       from_momentum = excluded.from_momentum,
+                       to_momentum = excluded.to_momentum,
+                       created_at = datetime('now')""",
+                (date, from_category, to_category, from_momentum, to_momentum),
+            )
+
+    def get_transition_history(
+        self, days: int = 90, reference_date: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get narrative transition history for the last N days."""
+        cutoff = self._cutoff_str(reference_date=reference_date, days=days)
+        upper = reference_date or datetime.utcnow().strftime("%Y-%m-%d")
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT date, from_category, to_category,
+                          from_momentum, to_momentum
+                   FROM narrative_transitions
+                   WHERE date >= ? AND date <= ?
+                   ORDER BY date DESC""",
                 (cutoff[:10], upper),
             ).fetchall()
         return [dict(r) for r in rows]

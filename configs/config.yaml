@@ -142,3 +142,20 @@ narrative_track:
   weak_drift_z_threshold: 1.2
   weak_drift_category_ratio: 0.30
   use_embeddings: false
+
+source_reliability:
+  tier_weights:
+    tier1_direct: 1.0
+    sns_to_tier1: 0.85
+    sns_to_tier2: 0.60
+    sns_only: 0.30
+    no_coverage: 0.20
+  diversity_max_bonus: 0.20
+  diversity_source_cap: 5
+  echo_penalty_factor: 0.20
+
+narrative_transition:
+  declining_threshold: -0.3
+  rising_threshold: 0.3
+  history_days: 90
+  top_n_outlook: 5

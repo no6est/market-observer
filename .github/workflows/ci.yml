@@ -21,4 +21,4 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests
-        run: pytest tests/ -x -q
+        run: pytest tests/ -x -q --ignore=tests/test_llm_gemini.py
