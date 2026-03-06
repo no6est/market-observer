@@ -31,34 +31,36 @@ def build_narrative_graph(
         - tickers: list of {ticker, sis, strength}
         - event_count: total events in category
     """
-    category_tickers: dict[str, dict[str, float]] = defaultdict(dict)
+    category_tickers: dict[str, dict[str, dict[str, float]]] = defaultdict(dict)
     category_counts: dict[str, int] = defaultdict(int)
 
     for e in enriched_events:
         cat = e.get("narrative_category", "")
         ticker = e.get("ticker", "")
         sis = e.get("sis", 0.0)
+        srs = e.get("srs", 0.0)
         if cat and ticker:
             # Keep highest SIS per ticker per category
-            if ticker not in category_tickers[cat] or sis > category_tickers[cat][ticker]:
-                category_tickers[cat][ticker] = sis
+            if ticker not in category_tickers[cat] or sis > category_tickers[cat][ticker].get("sis", 0.0):
+                category_tickers[cat][ticker] = {"sis": sis, "srs": srs}
             category_counts[cat] += 1
 
     graph = []
     for cat in sorted(category_tickers, key=lambda c: category_counts[c], reverse=True):
         tickers_map = category_tickers[cat]
         tickers_list = sorted(
-            tickers_map.items(), key=lambda x: x[1], reverse=True,
+            tickers_map.items(), key=lambda x: x[1]["sis"], reverse=True,
         )
         graph.append({
             "category": cat,
             "tickers": [
                 {
                     "ticker": ticker,
-                    "sis": round(sis, 3),
-                    "strength": _classify_strength(sis),
+                    "sis": round(vals["sis"], 3),
+                    "srs": round(vals["srs"], 3),
+                    "strength": _classify_strength(vals["sis"]),
                 }
-                for ticker, sis in tickers_list
+                for ticker, vals in tickers_list
             ],
             "event_count": category_counts[cat],
         })
@@ -74,8 +76,9 @@ def format_narrative_graph_text(graph: list[dict[str, Any]]) -> str:
         tickers = entry["tickers"]
         for i, t in enumerate(tickers):
             prefix = "└──" if i == len(tickers) - 1 else "├──"
+            srs_str = f", SRS: {t['srs']:.2f}" if "srs" in t else ""
             lines.append(
-                f"{prefix} {t['ticker']} (SIS: {t['sis']:.2f}, {t['strength']})"
+                f"{prefix} {t['ticker']} (SIS: {t['sis']:.2f}{srs_str}, {t['strength']})"
             )
         lines.append("")
     return "\n".join(lines)

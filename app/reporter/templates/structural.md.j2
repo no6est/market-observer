@@ -105,6 +105,36 @@
 
 {% endif -%}
 
+{% if narrative_transitions -%}
+## ナラティブ遷移
+
+| 移行元 | モメンタム | → | 移行先 | モメンタム |
+|--------|-----------|---|--------|-----------|
+{% for t in narrative_transitions -%}
+| {{ t.from_category }} | {{ "%+.1f"|format(t.from_momentum * 100) }}% | → | {{ t.to_category }} | {{ "%+.1f"|format(t.to_momentum * 100) }}% |
+{% endfor -%}
+
+---
+
+{% endif -%}
+
+{% if transition_outlook and transition_outlook.historical_transitions -%}
+## ナラティブ遷移見通し
+
+> 過去のパターン（{{ transition_outlook.total_observations }}日分）に基づく観測結果です。
+
+現在の優勢カテゴリ: **{{ transition_outlook.dominant_category }}**
+
+| 過去に台頭したカテゴリ | 観測回数 | 発生率 |
+|-----------------------|---------|--------|
+{% for h in transition_outlook.historical_transitions -%}
+| {{ h.to_category }} | {{ h.count }}回 | {{ "%.0f"|format(h.pct * 100) }}% |
+{% endfor -%}
+
+---
+
+{% endif -%}
+
 {% if non_ai_highlights -%}
 ## 非AI構造変化ハイライト
 
@@ -151,7 +181,7 @@
 {% for entry in narrative_graph -%}
 **{{ entry.category }}**（{{ entry.event_count }}件）
 {% for t in entry.tickers -%}
-{{ "└──" if loop.last else "├──" }} {{ t.ticker }} (SIS: {{ "%.2f"|format(t.sis) }}, {{ {"strong": "強", "moderate": "中", "weak": "弱"}.get(t.strength, t.strength) }})
+{{ "└──" if loop.last else "├──" }} {{ t.ticker }} (SIS: {{ "%.2f"|format(t.sis) }}, SRS: {{ "%.2f"|format(t.srs | default(0)) }}, {{ {"strong": "強", "moderate": "中", "weak": "弱"}.get(t.strength, t.strength) }})
 {% endfor %}
 
 {% endfor -%}
