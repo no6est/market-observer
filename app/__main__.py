@@ -637,6 +637,70 @@ def run_daily(
         except Exception:
             logger.debug("Failed to detect early drift")
 
+        # --- Narrative Track (Phase 1) ---
+        narrative_track_result = None
+        try:
+            from app.enrichers.narrative_track import update_narrative_tracks
+            narrative_track_result = update_narrative_tracks(
+                enriched_events, db, reference_date=_today,
+                keyword_overlap_threshold=cfg.narrative_track.keyword_overlap_threshold,
+                ticker_overlap_threshold=cfg.narrative_track.ticker_overlap_threshold,
+                cooling_inactive_days=cfg.narrative_track.cooling_inactive_days,
+                use_embeddings=cfg.narrative_track.use_embeddings,
+            )
+            if narrative_track_result:
+                nt = narrative_track_result
+                console.print(
+                    f"  [cyan]ナラティブトラック: 新規{nt['new_count']}件, "
+                    f"更新{nt['updated_count']}件, 冷却{len(nt['cooling_tracks'])}件"
+                )
+        except Exception:
+            logger.debug("Failed to update narrative tracks")
+
+        # --- Narrative Momentum + Weak Drift + Graph (Phase 2) ---
+        narrative_momentum = []
+        weak_drift_candidates_v2 = []
+        narrative_graph = []
+        try:
+            from app.enrichers.narrative_momentum import compute_category_momentum, detect_weak_drift
+            yesterday_events = db.get_enriched_events_history(days=2, reference_date=_today)
+            yesterday_events = [e for e in yesterday_events if e.get("date") != _today]
+            narrative_momentum = compute_category_momentum(enriched_events, yesterday_events)
+        except Exception:
+            logger.debug("Failed to compute narrative momentum")
+        try:
+            from app.enrichers.narrative_momentum import detect_weak_drift
+            weak_drift_candidates_v2 = detect_weak_drift(
+                enriched_events, narrative_health, narrative_index,
+                z_threshold=cfg.narrative_track.weak_drift_z_threshold,
+                category_ratio=cfg.narrative_track.weak_drift_category_ratio,
+            )
+        except Exception:
+            logger.debug("Failed to detect weak drift")
+        try:
+            from app.enrichers.narrative_graph import build_narrative_graph
+            narrative_graph = build_narrative_graph(enriched_events)
+        except Exception:
+            logger.debug("Failed to build narrative graph")
+
+        # --- Regime×Narrative + Story (Phase 3) ---
+        regime_narrative_analysis = None
+        story_summary = ""
+        try:
+            from app.enrichers.regime_narrative_cross import compute_regime_narrative_cross
+            regime_narrative_analysis = compute_regime_narrative_cross(
+                enriched_events, regime_info,
+            )
+        except Exception:
+            logger.debug("Failed to compute regime×narrative cross")
+        try:
+            from app.enrichers.story_generator import generate_story_summary
+            story_summary = generate_story_summary(
+                enriched_events, regime_info, gemini_client,
+            )
+        except Exception:
+            logger.debug("Failed to generate story summary")
+
         # Also extract word-level themes for DB persistence
         word_themes = extract_themes(db)
         for theme in word_themes:
@@ -671,6 +735,12 @@ def run_daily(
             regime_info=regime_info,
             echo_info=echo_info,
             early_drift_candidates=early_drift_candidates,
+            narrative_track_result=narrative_track_result,
+            narrative_momentum=narrative_momentum,
+            weak_drift_candidates_v2=weak_drift_candidates_v2,
+            narrative_graph=narrative_graph,
+            regime_narrative_analysis=regime_narrative_analysis,
+            story_summary=story_summary,
         )
 
         output_dir = Path(cfg.report.output_dir)

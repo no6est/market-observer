@@ -82,6 +82,15 @@ class RegimeConfig(BaseModel):
     })
 
 
+class NarrativeTrackConfig(BaseModel):
+    keyword_overlap_threshold: float = 0.5
+    ticker_overlap_threshold: float = 0.3
+    cooling_inactive_days: int = 3
+    weak_drift_z_threshold: float = 1.2
+    weak_drift_category_ratio: float = 0.30
+    use_embeddings: bool = False
+
+
 class EchoChamberConfig(BaseModel):
     similarity_threshold: float = 0.7
     min_correction: float = 0.5
@@ -103,6 +112,7 @@ class AppConfig(BaseModel):
     baseline: BaselineConfig = Field(default_factory=BaselineConfig)
     regime: RegimeConfig = Field(default_factory=RegimeConfig)
     echo_chamber: EchoChamberConfig = Field(default_factory=EchoChamberConfig)
+    narrative_track: NarrativeTrackConfig = Field(default_factory=NarrativeTrackConfig)
 
     @property
     def database_path(self) -> str:

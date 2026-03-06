@@ -150,6 +150,27 @@ CREATE INDEX IF NOT EXISTS idx_regime_snapshots_date ON regime_snapshots(date);
 CREATE INDEX IF NOT EXISTS idx_narrative_snapshots_date ON narrative_snapshots(date);
 CREATE INDEX IF NOT EXISTS idx_enriched_events_date ON enriched_events(date);
 CREATE INDEX IF NOT EXISTS idx_reaction_patterns_sector ON reaction_patterns(sector, shock_type);
+
+CREATE TABLE IF NOT EXISTS narrative_tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    narrative_id TEXT NOT NULL UNIQUE,
+    category TEXT NOT NULL,
+    keywords TEXT,
+    primary_tickers TEXT,
+    start_date TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    active_days INTEGER NOT NULL DEFAULT 1,
+    peak_sis REAL NOT NULL DEFAULT 0.0,
+    avg_spp REAL NOT NULL DEFAULT 0.0,
+    status TEXT NOT NULL DEFAULT 'emerging',
+    sis_history TEXT,
+    metadata TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_narrative_tracks_status ON narrative_tracks(status);
+CREATE INDEX IF NOT EXISTS idx_narrative_tracks_last_seen ON narrative_tracks(last_seen);
 """
 
 
@@ -700,6 +721,137 @@ class Database:
                 (cutoff, upper),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ---- Narrative Tracks ----
+
+    def upsert_narrative_track(self, track: dict[str, Any]) -> None:
+        """Insert or replace a narrative track."""
+        keywords = track.get("keywords")
+        if isinstance(keywords, list):
+            keywords = json.dumps(keywords, ensure_ascii=False)
+        primary_tickers = track.get("primary_tickers")
+        if isinstance(primary_tickers, list):
+            primary_tickers = json.dumps(primary_tickers, ensure_ascii=False)
+        sis_history = track.get("sis_history")
+        if isinstance(sis_history, list):
+            sis_history = json.dumps(sis_history)
+        metadata = track.get("metadata")
+        if isinstance(metadata, dict):
+            metadata = json.dumps(metadata, ensure_ascii=False)
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO narrative_tracks
+                   (narrative_id, category, keywords, primary_tickers,
+                    start_date, last_seen, active_days, peak_sis, avg_spp,
+                    status, sis_history, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(narrative_id) DO UPDATE SET
+                       category = excluded.category,
+                       keywords = excluded.keywords,
+                       primary_tickers = excluded.primary_tickers,
+                       last_seen = excluded.last_seen,
+                       active_days = excluded.active_days,
+                       peak_sis = excluded.peak_sis,
+                       avg_spp = excluded.avg_spp,
+                       status = excluded.status,
+                       sis_history = excluded.sis_history,
+                       metadata = excluded.metadata,
+                       updated_at = datetime('now')""",
+                (track["narrative_id"], track["category"], keywords,
+                 primary_tickers, track["start_date"], track["last_seen"],
+                 track.get("active_days", 1), track.get("peak_sis", 0.0),
+                 track.get("avg_spp", 0.0), track.get("status", "emerging"),
+                 sis_history, metadata),
+            )
+
+    def get_active_narrative_tracks(self, reference_date: str | None = None) -> list[dict[str, Any]]:
+        """Get narrative tracks that are not inactive."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT narrative_id, category, keywords, primary_tickers,
+                          start_date, last_seen, active_days, peak_sis,
+                          avg_spp, status, sis_history, metadata
+                   FROM narrative_tracks
+                   WHERE status != 'inactive'
+                   ORDER BY last_seen DESC, peak_sis DESC""",
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            if d.get("keywords") and isinstance(d["keywords"], str):
+                try:
+                    d["keywords"] = json.loads(d["keywords"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if d.get("primary_tickers") and isinstance(d["primary_tickers"], str):
+                try:
+                    d["primary_tickers"] = json.loads(d["primary_tickers"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if d.get("sis_history") and isinstance(d["sis_history"], str):
+                try:
+                    d["sis_history"] = json.loads(d["sis_history"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if d.get("metadata") and isinstance(d["metadata"], str):
+                try:
+                    d["metadata"] = json.loads(d["metadata"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result.append(d)
+        return result
+
+    def get_all_narrative_tracks(self) -> list[dict[str, Any]]:
+        """Get all narrative tracks."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT narrative_id, category, keywords, primary_tickers,
+                          start_date, last_seen, active_days, peak_sis,
+                          avg_spp, status, sis_history, metadata
+                   FROM narrative_tracks
+                   ORDER BY last_seen DESC""",
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            if d.get("keywords") and isinstance(d["keywords"], str):
+                try:
+                    d["keywords"] = json.loads(d["keywords"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if d.get("primary_tickers") and isinstance(d["primary_tickers"], str):
+                try:
+                    d["primary_tickers"] = json.loads(d["primary_tickers"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if d.get("sis_history") and isinstance(d["sis_history"], str):
+                try:
+                    d["sis_history"] = json.loads(d["sis_history"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if d.get("metadata") and isinstance(d["metadata"], str):
+                try:
+                    d["metadata"] = json.loads(d["metadata"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result.append(d)
+        return result
+
+    def mark_tracks_inactive(self, reference_date: str, inactive_days: int = 3) -> int:
+        """Mark tracks not seen for inactive_days as inactive."""
+        from datetime import datetime, timedelta
+        cutoff = (datetime.strptime(reference_date, "%Y-%m-%d") - timedelta(days=inactive_days)).strftime("%Y-%m-%d")
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """UPDATE narrative_tracks
+                   SET status = 'inactive', updated_at = datetime('now')
+                   WHERE status != 'inactive' AND last_seen <= ?""",
+                (cutoff,),
+            )
+            updated = cursor.rowcount
+        if updated > 0:
+            logger.info("Marked %d narrative tracks as inactive", updated)
+        return updated
 
     def get_narrative_history(self, days: int = 7, reference_date: str | None = None) -> list[dict[str, Any]]:
         """Get narrative snapshots for the last N days from reference_date."""

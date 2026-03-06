@@ -79,6 +79,12 @@ def generate_structural_report(
     regime_info: dict[str, Any] | None = None,
     echo_info: dict[str, Any] | None = None,
     early_drift_candidates: list[dict[str, Any]] | None = None,
+    narrative_track_result: dict[str, Any] | None = None,
+    narrative_momentum: list[dict[str, Any]] | None = None,
+    weak_drift_candidates_v2: list[dict[str, Any]] | None = None,
+    narrative_graph: list[dict[str, Any]] | None = None,
+    regime_narrative_analysis: dict[str, Any] | None = None,
+    story_summary: str | None = None,
 ) -> str:
     """Generate a structural change observation report.
 
@@ -124,6 +130,12 @@ def generate_structural_report(
         regime_info=regime_info,
         echo_info=echo_info,
         early_drift_candidates=early_drift_candidates or [],
+        narrative_track_result=narrative_track_result,
+        narrative_momentum=narrative_momentum or [],
+        weak_drift_candidates_v2=weak_drift_candidates_v2 or [],
+        narrative_graph=narrative_graph or [],
+        regime_narrative_analysis=regime_narrative_analysis,
+        story_summary=story_summary or "",
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     )
 
