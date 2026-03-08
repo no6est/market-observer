@@ -1,6 +1,9 @@
 ---
 title: Report Index
 ---
+
 # Market Observer Reports
 
-Reports will appear here after the first pipeline run.
+## 2026-03-08
+- [Structural](2026-03-08_structural.md)
+
