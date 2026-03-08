@@ -145,7 +145,8 @@ jobs:
                   date, label = m.group(1), m.group(2).replace("_", " ").title()
                   by_date[date].append((label, f))
 
-          lines = ["---", "title: Report Index", "---", "", "# Market Observer Reports", ""]
+          lines = ["---", "title: Report Index", "---", "", "# Market Observer Reports", "",
+                   "[Report Reading Guide](https://github.com/no6est/market-observer/blob/main/docs/REPORT_READING_GUIDE.md) | [Design Docs](https://github.com/no6est/market-observer/tree/main/docs) | [Repository](https://github.com/no6est/market-observer)", ""]
           for date in sorted(by_date.keys(), reverse=True):
               lines.append(f"## {date}")
               for label, fname in sorted(by_date[date]):
