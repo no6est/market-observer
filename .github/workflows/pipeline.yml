@@ -29,6 +29,9 @@ env:
 jobs:
   run:
     runs-on: ubuntu-latest
+    outputs:
+      pipeline: ${{ env.PIPELINE }}
+      report_date: ${{ env.REPORT_DATE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -100,3 +103,67 @@ jobs:
           path: _output/
           retention-days: 30
           if-no-files-found: warn
+
+  deploy:
+    needs: run
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+
+      - name: Download report artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: report-${{ needs.run.outputs.pipeline }}-${{ needs.run.outputs.report_date }}
+          path: _incoming/
+
+      - name: Fix image paths in markdown
+        run: |
+          for f in _incoming/*.md; do
+            sed -i 's|](reports/|](|g' "$f"
+          done
+
+      - name: Copy reports to site root
+        run: cp -v _incoming/* ./ 2>/dev/null || true && rm -rf _incoming/
+
+      - name: Generate index page
+        run: |
+          python3 << 'PYEOF'
+          import glob, re, os
+          from collections import defaultdict
+
+          files = sorted(glob.glob("*.md"), reverse=True)
+          files = [f for f in files if f != "index.md"]
+
+          by_date = defaultdict(list)
+          for f in files:
+              m = re.match(r"(\d{4}-\d{2}-\d{2})_(.+)\.md", f)
+              if m:
+                  date, label = m.group(1), m.group(2).replace("_", " ").title()
+                  by_date[date].append((label, f))
+
+          lines = ["---", "title: Report Index", "---", "", "# Market Observer Reports", ""]
+          for date in sorted(by_date.keys(), reverse=True):
+              lines.append(f"## {date}")
+              for label, fname in sorted(by_date[date]):
+                  lines.append(f"- [{label}]({fname})")
+              lines.append("")
+
+          if not by_date:
+              lines.append("No reports yet. Run the pipeline to generate reports.")
+
+          with open("index.md", "w") as fh:
+              fh.write("\n".join(lines) + "\n")
+          PYEOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "deploy: ${{ needs.run.outputs.pipeline }} report ${{ needs.run.outputs.report_date }}"
+          git push origin gh-pages
