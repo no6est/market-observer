@@ -6,6 +6,7 @@ title: Report Index
 
 ## 2026-06-01
 - [Monthly](2026-06-01_monthly.md)
+- [Structural](2026-06-01_structural.md)
 
 ## 2026-05-31
 - [Structural](2026-05-31_structural.md)
