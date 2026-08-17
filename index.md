@@ -4,6 +4,9 @@ title: Report Index
 
 # Market Observer Reports
 
+## 2026-08-17
+- [Structural](2026-08-17_structural.md)
+
 ## 2026-08-16
 - [Structural](2026-08-16_structural.md)
 
