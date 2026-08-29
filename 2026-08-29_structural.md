@@ -6,35 +6,33 @@
 
 | 順位 | 銘柄 | ショックタイプ | SIS | 裏付け | SPP | シグナル | サマリー |
 |------|------|----------------|-----|--------|-----|----------|----------|
-| 1 | NVDA | 業績シグナル | 0.793 | 0.64 | 0.63 | 言及急増 | 15件の言及（通常の3.0倍） |
-| 2 | GOOGL | ナラティブシフト | 0.709 | 0.56 | 0.47 | 言及急増 | 21件の言及（通常の2.8倍） |
-| 3 | MSFT | ナラティブシフト | 0.469 | 0.18 | 0.41 | 言及急増 | 4件の言及（通常の3.5倍） |
+| 1 | MSFT | ナラティブシフト | 0.352 | 0.18 | 0.46 | 言及急増 | 4件の言及（通常の3.8倍） |
 
 
 ---
 
 ## ストーリーサマリー
 
-本日の市場は高ボラティリティ環境にあり、AI/LLM/自動
+本日の市場は高ボラティリティ・レジームにあり、全体
 
 ---
 
 ## ナラティブ分布
 
-> **母集団**: 全イベント（3件）
+> **母集団**: 全イベント（1件）
 
 | カテゴリ | 件数 | 比率 |
 |----------|------|------|
-| AI/LLM/自動化 | 3 | 100% |
+| AI/LLM/自動化 | 1 | 100% |
 
 
 - **AI関連比率**: 100%
 - **トップ1集中度**: 100%
-- **7日平均AI比率**: 75%
+- **7日平均AI比率**: 80%
 **警告:**
 - AI関連ナラティブが全体の100%を占めています（閾値: 50%）
 - 「AI/LLM/自動化」が全体の100%を占め、偏りが大きい状態です
-- AI比率が7日平均(75%)から25ポイント上昇しています
+- AI比率が7日平均(80%)から20ポイント上昇しています
 
 
 ---
@@ -43,7 +41,7 @@
 
 | ナラティブ | カテゴリ | 継続日数 | ステータス | ピークSIS | 平均SPP |
 |-----------|----------|---------|-----------|----------|---------|
-| AI/LLM/自動化（google, 件の言及, 通常の） | AI/LLM/自動化 | 1日 | 出現 | 0.793 | 0.50 |
+| AI/LLM/自動化（件の言及, 通常の, microsoft） | AI/LLM/自動化 | 1日 | 出現 | 0.352 | 0.46 |
 
 
 - **新規トラック**: 1件
@@ -56,8 +54,8 @@
 ### AI/LLM/自動化
 - **ステータス**: 出現
 - **継続日数**: 1日（2026-08-29 ～ 2026-08-29）
-- **SIS推移**: 0.793
-- **主要銘柄**: NVDA, GOOGL, MSFT
+- **SIS推移**: 0.352
+- **主要銘柄**: MSFT
 
 ---
 
@@ -67,7 +65,7 @@
 |----------|------|------|----------|------|
 | その他 | 0件 | 2件 | -100.0% | 消滅 |
 | 半導体/供給網 | 0件 | 1件 | -100.0% | 消滅 |
-| AI/LLM/自動化 | 3件 | 5件 | -44.0% | 縮小 |
+| AI/LLM/自動化 | 1件 | 5件 | -80.0% | 縮小 |
 ---
 
 ## ナラティブ遷移見通し
@@ -89,11 +87,11 @@
 
 ### 1. AI基盤セクターの市場ナラティブ転換
 - **ショックタイプ**: ナラティブシフト
-- **関連銘柄**: NVDA, GOOGL, MSFT
+- **関連銘柄**: MSFT
 - **セクター**: AI基盤
-- **平均SIS**: 0.657
-- **キーワード**: google, nvidia, huge, wall, street
-- **概要**: Nvidia’s revenue forecast is so huge that Wall Street wonders if SpaceX is the reason; DLSS 5 leaked and modders are putting Nvidia&#8217;s AI effects on everything; Is Nvidia heading for $1 trillion in annual revenue? One analyst now thinks that’s possible.
+- **平均SIS**: 0.352
+- **キーワード**: microsoft, seals, longest, winning, streak
+- **概要**: Microsoft’s stock seals its longest winning streak of the year as AI software fears fade
 
 
 
@@ -101,36 +99,18 @@
 
 ## ナラティブグラフ
 
-**AI/LLM/自動化**（3件）
-├── NVDA (SIS: 0.79, SRS: 1.00, 強)
-├── GOOGL (SIS: 0.71, SRS: 0.80, 強)
-└── MSFT (SIS: 0.47, SRS: 1.00, 中)
+**AI/LLM/自動化**（1件）
+└── MSFT (SIS: 0.35, SRS: 1.00, 中)
 
 
 ---
 
 ## 因果チェーン
 
-### NVDA（業績シグナル）
-
-```
-NVDA: 15件の言及（通常の3.0倍）
-  └→ メディア・SNSでの注目急上昇（Nvidia’s revenue forecast is so huge that Wall Street wonders if SpaceX is the r）
-    └→ 企業固有の評価見直しが進む可能性。波及先: GOOGL, MSFT, AMD
-```
-
-### GOOGL（ナラティブシフト）
-
-```
-GOOGL: 21件の言及（通常の2.8倍）
-  └→ メディア・SNSでの注目急上昇（Google further buries search results under AI mode）
-    └→ 資金フロー・投資テーマの転換が起こる可能性。波及先: NVDA, MSFT, AMD
-```
-
 ### MSFT（ナラティブシフト）
 
 ```
-MSFT: 4件の言及（通常の3.5倍）
+MSFT: 4件の言及（通常の3.8倍）
   └→ メディア・SNSでの注目急上昇（Microsoft’s stock seals its longest winning streak of the year as AI software fe）
     └→ 資金フロー・投資テーマの転換が起こる可能性。波及先: NVDA, GOOGL, AMD
 ```
@@ -141,46 +121,8 @@ MSFT: 4件の言及（通常の3.5倍）
 
 ## 仮説（なぜ起きたか）
 
-### 1. More professional/Analytical):* アルファベット（GOOG
-- **確信度**: 99%
-- **状況**: 関連する記事・投稿が5件見つかりました
-- **関連する記事・投稿**:
-- Google further buries search results under AI mode
-- Barret Zoph, the Thinking Machines co-founder ousted before joining OpenAI, is now at Google
-- Google’s AI note-taking app now allows you to interact with books
-- Luanti removed from Google Play due to baseless AI copyright notice
-- Alphabet stock sheds $700B as AI bills climb
-- **根拠URL**:
-- [https://www.theverge.com/tech/986364/google-search-ai-overviews-auto-expand](https://www.theverge.com/tech/986364/google-search-ai-overviews-auto-expand)
-- [https://techcrunch.com/2026/08/27/barret-zoph-the-thinking-machines-co-founder-who-defected-to-openai-is-now-at-google/](https://techcrunch.com/2026/08/27/barret-zoph-the-thinking-machines-co-founder-who-defected-to-openai-is-now-at-google/)
-- [https://www.theverge.com/tech/985567/google-gemini-notebook-expert-sources-books](https://www.theverge.com/tech/985567/google-gemini-notebook-expert-sources-books)
-- [https://www.theverge.com/tech/985679/google-play-android-17-memory-limit](https://www.theverge.com/tech/985679/google-play-android-17-memory-limit)
-- [https://techcrunch.com/2026/08/27/openai-anthropic-google-and-100-other-companies-call-for-action-to-defend-against-rogue-ai/](https://techcrunch.com/2026/08/27/openai-anthropic-google-and-100-other-companies-call-for-action-to-defend-against-rogue-ai/)
-- [https://blog.luanti.org/2026/08/27/luanti-dmca-tracer-ai/](https://blog.luanti.org/2026/08/27/luanti-dmca-tracer-ai/)
-- [https://www.semafor.com/article/08/27/2026/alphabet-stock-sheds-700b-as-ai-bills-climb](https://www.semafor.com/article/08/27/2026/alphabet-stock-sheds-700b-as-ai-bills-climb)
-- **反論・留意点**:
-- 特定されていません
-
-
-### 2. NVIDIA（NVDA）に関する言及数が、
-- **確信度**: 84%
-- **状況**: 関連する記事・投稿が3件見つかりました
-- **関連する記事・投稿**:
-- Nvidia’s revenue forecast is so huge that Wall Street wonders if SpaceX is the reason
-- DLSS 5 leaked and modders are putting Nvidia&#8217;s AI effects on everything
-- Is Nvidia heading for $1 trillion in annual revenue? One analyst now thinks that’s possible.
-- **根拠URL**:
-- [https://www.marketwatch.com/story/nvidias-revenue-forecast-is-so-huge-that-wall-street-wonders-if-spacex-is-the-reason-1ee7a8a9?mod=mw_rss_topstories](https://www.marketwatch.com/story/nvidias-revenue-forecast-is-so-huge-that-wall-street-wonders-if-spacex-is-the-reason-1ee7a8a9?mod=mw_rss_topstories)
-- [https://www.theverge.com/games/986197/nvidia-dlss-5-leak-ai](https://www.theverge.com/games/986197/nvidia-dlss-5-leak-ai)
-- [https://www.marketwatch.com/story/nvidia-stock-is-climbing-after-another-set-of-blockbuster-results-heres-what-wall-street-is-saying-a2260a62?mod=mw_rss_topstories](https://www.marketwatch.com/story/nvidia-stock-is-climbing-after-another-set-of-blockbuster-results-heres-what-wall-street-is-saying-a2260a62?mod=mw_rss_topstories)
-- [https://www.cnbc.com/2026/08/27/cramer-nvidia-salesforce-earnings-upended-two-bear-narratives.html](https://www.cnbc.com/2026/08/27/cramer-nvidia-salesforce-earnings-upended-two-bear-narratives.html)
-- [https://arstechnica.com/ai/2026/08/report-nvidia-to-acquire-ai-model-repository-hugging-face-for-13-billion/](https://arstechnica.com/ai/2026/08/report-nvidia-to-acquire-ai-model-repository-hugging-face-for-13-billion/)
-- **反論・留意点**:
-- 特定されていません
-
-
-### 3. マイクロソフト（MSFT）に関する言
-- **確信度**: 37%
+### 1. Microsoft（MSFT）に関する言
+- **確信度**: 39%
 - **状況**: 関連する記事・投稿が1件見つかりました
 - **関連する記事・投稿**:
 - Microsoft’s stock seals its longest winning streak of the year as AI software fears fade
@@ -196,20 +138,10 @@ MSFT: 4件の言及（通常の3.5倍）
 
 ## 波及候補
 
-### GOOGL → NVDA, MSFT, AMD, SMCI
-- **セクター**: AI基盤
-- **理由**: GOOGLの言及急増異常（スコア0.98）により、同セクターAI基盤のNVDA, MSFT, AMD, SMCIも影響を受ける可能性（過去103件の類似パターンから混合方向、確信度100%）
-- **波及方向**: 混合（確信度: 100%、過去46件）
-
-### NVDA → GOOGL, MSFT, AMD, SMCI
-- **セクター**: AI基盤
-- **理由**: NVDAの言及急増異常（スコア0.89）により、同セクターAI基盤のGOOGL, MSFT, AMD, SMCIも影響を受ける可能性（過去103件の類似パターンから混合方向、確信度100%）
-- **波及方向**: 混合（確信度: 100%、過去16件）
-
 ### MSFT → NVDA, GOOGL, AMD, SMCI
 - **セクター**: AI基盤
-- **理由**: MSFTの言及急増異常（スコア0.53）により、同セクターAI基盤のNVDA, GOOGL, AMD, SMCIも影響を受ける可能性（過去103件の類似パターンから混合方向、確信度100%）
-- **波及方向**: 混合（確信度: 100%、過去46件）
+- **理由**: MSFTの言及急増異常（スコア0.58）により、同セクターAI基盤のNVDA, GOOGL, AMD, SMCIも影響を受ける可能性（過去106件の類似パターンから混合方向、確信度100%）
+- **波及方向**: 混合（確信度: 100%、過去48件）
 
 
 
@@ -249,25 +181,40 @@ MSFT: 4件の言及（通常の3.5倍）
 
 | カテゴリ | イベント数 | 平均SIS | データ充足 |
 |----------|-----------|---------|----------|
-| AI/LLM/自動化 | 3 | 0.657 | 充足 |
+| AI/LLM/自動化 | 1 | 0.352 | データ不足 |
 ---
 
 ## メディア・エコーチェンバー評価
 
 | 指標 | 値 |
 |------|-----|
-| **総ソース数** | 284 |
-| **独立ソース数** | 284 |
+| **総ソース数** | 218 |
+| **独立ソース数** | 217 |
 | **エコー比率** | 0% |
-| **補正係数** | 1.00 |
+| **補正係数** | 0.99 |
 
 **エコークラスター**:
-- 「Mark Walter's insurer Delaware Life sees two banks pause...」（1ソース: CNBC）
-- 「U.S. appeals court rules against prediction markets,...」（1ソース: CNBC）
-- 「Meta's $17 billion settlement mandates new safeguards...」（1ソース: CNBC）
-- 「Trump announces deal with Venezuela to secure more than...」（1ソース: CNBC）
-- 「Chinese automakers are following Tesla’s bet that robots...」（1ソース: TechCrunch）
+- 「Nancy Grace Roman Space Telescope」（2ソース: hackernews, hackernews）
+- 「Vicariously hike the Appalachian in the gorgeous A Trail Tale」（1ソース: TheVerge）
+- 「Norway's King Haakon honors 'dear father' Harald in...」（1ソース: CNBC）
+- 「Op-ed: Dolly Parton was underestimated for decades. That...」（1ソース: CNBC）
+- 「K, C or E? Why economists can’t agree on the shape of...」（1ソース: CNBC）
 
+
+---
+
+## ナラティブ健全性評価
+
+> **WARNING**: ナラティブ過熱警告: AI関連が100%（7日平均80%から+20pt）、裏付けスコア中央値0.18（閾値0.3未満）、5日連続でAI優勢
+
+**検出条件:**
+- AI関連比率: 100%
+- 7日平均AI比率: 80%
+- 裏付けスコア中央値: 0.18
+- AI優勢連続日数: 5日
+
+**推奨アクション:**
+非AI構造変化への注目度を意図的に高めることを推奨します。AI関連ナラティブが市場の実態以上に増幅されている可能性があります。
 
 ---
 
@@ -285,11 +232,11 @@ MSFT: 4件の言及（通常の3.5倍）
 
 ## 構造変化である場合の問い
 
-1. このエグゼキューションシグナルが構造的変化である場合、6ヶ月後にAI基盤セクターはどう変わっているか？
+1. このナラティブシフトが構造的変化である場合、6ヶ月後にAI基盤セクターはどう変わっているか？
 
-2. この構造変化の最大の受益者は誰か？GOOGL, MSFT, AMDは恩恵を受けるか、それとも脅威を受けるか？
+2. この構造変化の最大の受益者は誰か？NVDA, GOOGL, AMDは恩恵を受けるか、それとも脅威を受けるか？
 
-3. NVDAの言及急増が構造変化ではなく一時的なノイズである反証は何か？
+3. MSFTの言及急増が構造変化ではなく一時的なノイズである反証は何か？
 
 
 
@@ -297,11 +244,9 @@ MSFT: 4件の言及（通常の3.5倍）
 
 ## 追跡クエリ
 
-- `"NVDA" AND (news OR analysis) since:2026-08-29`
-- `"GOOGL" AND (news OR analysis) since:2026-08-29`
 - `"MSFT" AND (news OR analysis) since:2026-08-29`
-- `(NVDA OR GOOGL OR MSFT) AND (sentiment OR outlook)`
+- `(MSFT) AND (sentiment OR outlook)`
 
 
 ---
-*レポート生成日時: 2026-08-29 03:29:48*
+*レポート生成日時: 2026-08-29 23:53:46*
