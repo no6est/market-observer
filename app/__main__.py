@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -75,8 +75,23 @@ def _run_collectors(config):
     return results
 
 
-def _run_detectors(config, db):
-    """Run all detectors and return anomalies."""
+def _report_day_start_utc(report_date: str) -> str:
+    """Return JST 00:00 of the report date as a UTC SQLite timestamp.
+
+    Price bars first collected before this time were already seen by an
+    earlier day's report, so price/volume detectors skip them.
+    """
+    start = datetime.strptime(report_date, "%Y-%m-%d") - timedelta(hours=9)
+    return start.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _run_detectors(config, db, fresh_since: str | None = None):
+    """Run all detectors and return anomalies.
+
+    Args:
+        fresh_since: Passed to price/volume detectors so bars already
+            reported by an earlier run are not reported again.
+    """
     from app.detectors.price_anomaly import detect_price_anomalies
     from app.detectors.volume_anomaly import detect_volume_anomalies
     from app.detectors.mention_anomaly import detect_mention_anomalies
@@ -85,12 +100,16 @@ def _run_detectors(config, db):
     anomalies = []
 
     try:
-        anomalies.extend(detect_price_anomalies(db, config.tickers, config.detection))
+        anomalies.extend(
+            detect_price_anomalies(db, config.tickers, config.detection, fresh_since=fresh_since)
+        )
     except Exception:
         logger.exception("Price anomaly detection failed")
 
     try:
-        anomalies.extend(detect_volume_anomalies(db, config.tickers, config.detection))
+        anomalies.extend(
+            detect_volume_anomalies(db, config.tickers, config.detection, fresh_since=fresh_since)
+        )
     except Exception:
         logger.exception("Volume anomaly detection failed")
 
@@ -435,7 +454,8 @@ def run_daily(
         # Phase 2: Detection (clear previous anomalies for fresh analysis)
         console.print("[bold cyan][daily] Phase 2/4: 異常検出...")
         db.clear_recent_anomalies(hours=cfg.detection.cooldown_hours)
-        anomalies = _run_detectors(cfg, db)
+        report_date = date or datetime.now().strftime("%Y-%m-%d")
+        anomalies = _run_detectors(cfg, db, fresh_since=_report_day_start_utc(report_date))
         for anomaly in anomalies:
             # Gemini summary enhancement
             if gemini_client and not anomaly.get("summary"):
@@ -945,6 +965,34 @@ def run_monthly(
     except Exception:
         logger.exception("Monthly analysis failed")
         console.print("[bold red][monthly] エラーが発生しました")
+        sys.exit(1)
+
+
+@cli.command()
+def backfill_prices(
+    config: str = typer.Option("configs/config.yaml", help="設定ファイルのパス"),
+    period: str = typer.Option("2y", help="再取得する期間 (yfinance period)"),
+    log_level: str = typer.Option("INFO", help="ログレベル (DEBUG/INFO/WARNING/ERROR)"),
+) -> None:
+    """価格履歴を再取得して上書きする（NULL欠損・未調整の分割を修復）。"""
+    _setup_logging(log_level)
+
+    try:
+        cfg = load_config(config)
+        from app.collectors.price import create_price_collector
+        from app.database import Database
+
+        db = Database(cfg.database_path)
+        rows = create_price_collector().collect(cfg.tickers, period=period)
+        written = db.insert_price_data(rows)
+        removed = db.delete_null_price_rows()
+        console.print(
+            f"[bold green][backfill] 完了: {written}行を書き込み、"
+            f"終値欠損の{removed}行を削除"
+        )
+    except Exception:
+        logger.exception("Price backfill failed")
+        console.print("[bold red][backfill] エラーが発生しました")
         sys.exit(1)
 
 
