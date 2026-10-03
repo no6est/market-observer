@@ -59,7 +59,10 @@ def detect_volume_anomalies(
 
         z_score = (current_volume - mean) / std
 
-        if abs(z_score) >= config.z_threshold:
+        # Only upward deviations are spikes. Downstream labels, weights and
+        # hypotheses all treat "volume_spike" as a surge, so a volume collapse
+        # (negative z) must not be reported under this signal type.
+        if z_score >= config.z_threshold:
             score = min(abs(z_score) / 5.0, 1.0)
             volume_ratio = round(current_volume / mean, 2) if mean > 0 else 0
             anomalies.append({

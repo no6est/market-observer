@@ -149,6 +149,16 @@ class TestVolumeAnomalyDetection:
         assert anomalies[0]["signal_type"] == "volume_spike"
         assert anomalies[0]["z_score"] > 0
 
+    def test_volume_drop_not_reported_as_spike(self, db: Database, config: DetectionConfig) -> None:
+        """A sudden volume collapse must not be reported as a volume spike."""
+        volumes = [1000000, 1010000, 990000, 1005000, 995000, 1002000, 998000,
+                   1003000, 997000, 1001000, 999000, 1004000, 996000, 1000000, 1000000] + [100000]
+        closes = [100.0] * 16
+        _insert_price_series(db, "TEST", closes, volumes)
+
+        anomalies = detect_volume_anomalies(db, ["TEST"], config)
+        assert anomalies == []
+
     def test_no_anomaly_for_stable_volume(self, db: Database, config: DetectionConfig) -> None:
         """Stable volume should not trigger."""
         volumes = [1000000, 1050000, 980000, 1020000, 1010000, 990000, 1000000]
