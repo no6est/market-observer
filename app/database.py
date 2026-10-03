@@ -552,7 +552,7 @@ class Database:
                           evidence_score, market_evidence,
                           media_evidence, official_evidence,
                           tier1_count, tier2_count, sns_count,
-                          diffusion_pattern, spp, regime
+                          diffusion_pattern, spp, regime, created_at
                    FROM enriched_events
                    WHERE date >= ? AND date <= ?
                    ORDER BY date DESC, sis DESC""",

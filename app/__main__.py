@@ -871,6 +871,13 @@ def run_weekly(
 
         # Generate charts
         today = date or datetime.now().strftime("%Y-%m-%d")
+
+        # Signal calibration: realized outcomes of SPP buckets / mention surges
+        try:
+            from app.enrichers.signal_calibration import compute_signal_calibration
+            analysis["signal_calibration"] = compute_signal_calibration(db, today)
+        except Exception:
+            logger.exception("Failed to compute signal calibration")
         output_dir = Path(cfg.report.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         try:

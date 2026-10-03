@@ -105,7 +105,9 @@
 ---
 
 {% if analysis.spp_top3 -%}
-## 構造持続確率 Top3
+## 構造持続スコア Top3
+
+> SPPは確率ではなく相対スコアです。実際の予測力は「シグナル実績検証」を参照してください。
 
 | 順位 | 銘柄 | SPP | ショックタイプ | 伝播パターン | サマリー |
 |------|------|-----|----------------|--------------|----------|
@@ -264,6 +266,39 @@
 {% endif %}
 
 {% endfor -%}
+
+---
+
+{% endif -%}
+
+{% if analysis.signal_calibration and analysis.signal_calibration.spp_buckets -%}
+{% set cal = analysis.signal_calibration -%}
+## シグナル実績検証
+
+> 直近{{ cal.lookback_days }}日のイベント（{{ cal.event_count }}件、重複除去後）について、報告したスコアとその後の実際の値動きを照合した結果です。
+
+### SPP別 価格イベントの方向継続率
+
+| 区分 | 5営業日後 | 20営業日後 |
+|------|----------|-----------|
+{% for b in cal.spp_buckets -%}
+| {{ b.label }} | {% if b.cont5 is not none %}{{ "%.0f"|format(b.cont5 * 100) }}%（n={{ b.n5 }}）{% else %}サンプル不足（n={{ b.n5 }}）{% endif %} | {% if b.cont20 is not none %}{{ "%.0f"|format(b.cont20 * 100) }}%（n={{ b.n20 }}）{% else %}サンプル不足（n={{ b.n20 }}）{% endif %} |
+{% endfor %}
+- 50%前後なら方向は五分五分です。SPP≥0.6の行が他より明確に高くない限り、SPPは持続性の予測に使えません。
+
+### 言及急増と値動きの時間関係
+
+{% set m = cal.mention_surge -%}
+{% if m.coincident_rate is not none -%}
+| 指標 | 言及急増時 | 全取引日の基準 |
+|------|-----------|---------------|
+| 同じ取引日に大きな値動き（±2σ） | {{ "%.0f"|format(m.coincident_rate * 100) }}% | {{ "%.0f"|format(m.baseline_coincident_rate * 100) }}% |
+| その後3営業日以内に大きな値動き | {{ "%.0f"|format(m.subsequent_rate * 100) }}% | {{ "%.0f"|format(m.baseline_subsequent_rate * 100) }}% |
+
+- 「同じ取引日」が基準より高く「その後」が基準並みなら、言及急増は値動きへの反応であり予兆ではありません。（n={{ m.n }}）
+{% else -%}
+サンプル不足（n={{ m.n }}）
+{% endif %}
 
 ---
 
