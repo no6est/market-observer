@@ -245,28 +245,57 @@ class Database:
     # ---- Price Data ----
 
     def insert_price_data(self, rows: list[dict[str, Any]]) -> int:
-        inserted = 0
+        """Upsert price bars and return the number of rows inserted or updated.
+
+        Bars without a close are skipped: an incomplete bar stored once used to
+        stay NULL forever. Existing bars are overwritten so that split/dividend
+        adjustments from the provider replace stale unadjusted values.
+        ``collected_at`` keeps the first-seen time, which detectors use to tell
+        new bars from ones already reported.
+        """
+        written = 0
+        skipped = 0
         with self._connect() as conn:
             for row in rows:
+                if row.get("close") is None:
+                    skipped += 1
+                    continue
                 try:
                     cursor = conn.execute(
-                        """INSERT OR IGNORE INTO price_data
+                        """INSERT INTO price_data
                            (ticker, timestamp, open, high, low, close, volume)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                           VALUES (?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(ticker, timestamp) DO UPDATE SET
+                               open = excluded.open,
+                               high = excluded.high,
+                               low = excluded.low,
+                               close = excluded.close,
+                               volume = excluded.volume""",
                         (row["ticker"], row["timestamp"], row.get("open"),
                          row.get("high"), row.get("low"), row.get("close"),
                          row.get("volume")),
                     )
-                    inserted += cursor.rowcount
+                    written += cursor.rowcount
                 except sqlite3.IntegrityError:
                     pass
-        return inserted
+        if skipped:
+            logger.warning("Skipped %d price bars without close (incomplete data)", skipped)
+        return written
+
+    def delete_null_price_rows(self) -> int:
+        """Delete bars that still have no close (left over from incomplete fetches)."""
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM price_data WHERE close IS NULL")
+            deleted = cursor.rowcount
+        if deleted:
+            logger.info("Deleted %d price rows without close", deleted)
+        return deleted
 
     def get_price_history(self, ticker: str, days: int = 30) -> list[dict[str, Any]]:
         cutoff = self._cutoff_str(days=days)
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT ticker, timestamp, open, high, low, close, volume
+                """SELECT ticker, timestamp, open, high, low, close, volume, collected_at
                    FROM price_data
                    WHERE ticker = ? AND timestamp >= ?
                    ORDER BY timestamp""",

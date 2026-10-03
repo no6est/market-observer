@@ -15,6 +15,7 @@ def detect_volume_anomalies(
     db: Database,
     tickers: list[str],
     config: DetectionConfig,
+    fresh_since: str | None = None,
 ) -> list[dict[str, Any]]:
     """Detect abnormal trading volume spikes using leave-one-out z-scores.
 
@@ -26,6 +27,9 @@ def detect_volume_anomalies(
         db: Database instance for querying price/volume history and cooldowns.
         tickers: List of ticker symbols to evaluate.
         config: Detection parameters (lookback_days, z_threshold, cooldown_hours).
+        fresh_since: UTC timestamp ("YYYY-MM-DD HH:MM:SS"). When given, a
+            ticker is skipped if its latest bar was first collected before
+            this time (already reported by an earlier run).
 
     Returns:
         List of anomaly dicts with summary and details fields.
@@ -42,7 +46,12 @@ def detect_volume_anomalies(
             logger.debug("Skipping %s: insufficient volume history (%d rows)", ticker, len(history))
             continue
 
-        volumes = [row["volume"] for row in history if row["volume"] is not None and row["volume"] > 0]
+        valid = [row for row in history if row["volume"] is not None and row["volume"] > 0]
+        if fresh_since and valid and (valid[-1].get("collected_at") or "") < fresh_since:
+            logger.debug("Skipping %s: no new volume bar since %s", ticker, fresh_since)
+            continue
+
+        volumes = [row["volume"] for row in valid]
         if len(volumes) < 3:
             continue
 

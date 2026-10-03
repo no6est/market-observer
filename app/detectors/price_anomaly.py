@@ -15,6 +15,7 @@ def detect_price_anomalies(
     db: Database,
     tickers: list[str],
     config: DetectionConfig,
+    fresh_since: str | None = None,
 ) -> list[dict[str, Any]]:
     """Detect abnormal daily price returns using z-scores.
 
@@ -26,6 +27,10 @@ def detect_price_anomalies(
         db: Database instance for querying price history and cooldown checks.
         tickers: List of ticker symbols to evaluate.
         config: Detection parameters (lookback_days, z_threshold, cooldown_hours).
+        fresh_since: UTC timestamp ("YYYY-MM-DD HH:MM:SS"). When given, a
+            ticker is skipped if its latest bar was first collected before
+            this time, i.e. the move was already reported by an earlier run
+            (weekends, holidays, delayed data).
 
     Returns:
         List of anomaly dicts with summary and details fields.
@@ -42,7 +47,12 @@ def detect_price_anomalies(
             logger.debug("Skipping %s: insufficient price history (%d rows)", ticker, len(history))
             continue
 
-        closes = [row["close"] for row in history if row["close"] is not None]
+        valid = [row for row in history if row["close"] is not None]
+        if fresh_since and valid and (valid[-1].get("collected_at") or "") < fresh_since:
+            logger.debug("Skipping %s: no new price bar since %s", ticker, fresh_since)
+            continue
+
+        closes = [row["close"] for row in valid]
         if len(closes) < 3:
             continue
 

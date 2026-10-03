@@ -7,10 +7,32 @@ enhanced narrative archiving, and monthly summary output.
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Ticker in parentheses, e.g. "マイクロソフト（MSFT）" or "NVIDIA (NVDA)".
+_PAREN_TICKER = re.compile(r"[（(]\s*([A-Z]{1,5})\s*[）)]")
+
+
+def extract_ticker(text: str) -> str | None:
+    """Extract a ticker symbol from (possibly Japanese) hypothesis text.
+
+    Prefers a parenthesized ticker: Japanese text has no spaces, so
+    whitespace splitting alone cannot find "マイクロソフト（MSFT）". Falls back
+    to the first whitespace-delimited all-uppercase ASCII word (English text).
+    """
+    if not text:
+        return None
+    m = _PAREN_TICKER.search(text)
+    if m:
+        return m.group(1)
+    for word in text.split():
+        if word.isascii() and word.isalpha() and word.isupper() and len(word) <= 5:
+            return word
+    return None
 
 
 def archive_hypotheses(
@@ -30,14 +52,7 @@ def archive_hypotheses(
     for hyp in hypotheses:
         try:
             # Extract ticker from hypothesis text if present
-            ticker = hyp.get("ticker")
-            if not ticker:
-                # Try to extract from hypothesis text
-                text = hyp.get("hypothesis", "")
-                for word in text.split():
-                    if word.isupper() and len(word) <= 5 and word.isalpha():
-                        ticker = word
-                        break
+            ticker = hyp.get("ticker") or extract_ticker(hyp.get("hypothesis", ""))
 
             # Evidence may be a list of URLs — serialize to string
             evidence = hyp.get("evidence", "")
@@ -82,7 +97,9 @@ def evaluate_pending_hypotheses(
 
     results: list[dict[str, Any]] = []
     for hyp in pending:
-        ticker = hyp.get("ticker")
+        # Rows archived before tickers were stored have ticker NULL; recover
+        # it from the text so they can still be evaluated.
+        ticker = hyp.get("ticker") or extract_ticker(hyp.get("hypothesis", ""))
         hyp_id = hyp["id"]
 
         if ticker and ticker in recent_tickers:
