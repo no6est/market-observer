@@ -21,7 +21,8 @@ def detect_price_anomalies(
 
     Calculates daily close-to-close returns over the lookback window,
     computes the z-score of the most recent return, and flags tickers
-    whose absolute z-score exceeds the configured threshold.
+    whose absolute z-score exceeds the configured threshold or whose
+    absolute return reaches ``config.min_abs_return_pct``.
 
     Args:
         db: Database instance for querying price history and cooldown checks.
@@ -74,9 +75,19 @@ def detect_price_anomalies(
             continue
 
         z_score = (latest_return - mean) / std
+        abs_pct = abs(latest_return) * 100
+        z_hit = abs(z_score) >= config.z_threshold
+        abs_hit = config.min_abs_return_pct > 0 and abs_pct >= config.min_abs_return_pct
 
-        if abs(z_score) >= config.z_threshold:
-            score = min(abs(z_score) / 5.0, 1.0)
+        if z_hit or abs_hit:
+            # An absolute-threshold hit is scored as at least a z_threshold hit,
+            # so large moves in volatile names are not ranked below small ones.
+            effective_z = abs(z_score)
+            if abs_hit:
+                effective_z = max(
+                    effective_z, config.z_threshold * abs_pct / config.min_abs_return_pct
+                )
+            score = min(effective_z / 5.0, 1.0)
             return_pct = round(latest_return * 100, 2)
             sign = "+" if return_pct >= 0 else ""
             anomalies.append({
@@ -93,6 +104,7 @@ def detect_price_anomalies(
                     "prev_close": closes[-2],
                     "return_pct": return_pct,
                     "window_size": len(returns),
+                    "trigger": "z_score" if z_hit else "abs_return",
                 },
             })
             logger.info(

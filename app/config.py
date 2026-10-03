@@ -12,6 +12,9 @@ from pydantic import BaseModel, Field
 class DetectionConfig(BaseModel):
     lookback_days: int = 20
     z_threshold: float = 2.0
+    # Daily return (%) that counts as a price anomaly even below z_threshold.
+    # High-volatility names otherwise miss +8-11% moves; 0 disables.
+    min_abs_return_pct: float = 7.0
     cooldown_hours: int = 24
     max_anomalies_per_report: int = 10
 

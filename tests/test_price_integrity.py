@@ -127,6 +127,31 @@ class TestStaleBarSkipping:
         assert detect_volume_anomalies(db, ["TEST"], config, fresh_since="2026-10-03 15:00:00") == []
 
 
+class TestAbsoluteReturnThreshold:
+    # Volatile series: +-6% swings make the std large, so a +9% day has z < 2.
+    VOLATILE = [100.0, 106.0, 100.0, 106.0, 100.0, 106.0, 100.0, 106.0,
+                100.0, 106.0, 100.0, 106.0, 100.0, 106.0, 100.0]
+
+    def test_large_move_below_z_threshold_is_detected(self, db, config) -> None:
+        db.insert_price_data(_series(self.VOLATILE + [109.0]))
+        anomalies = detect_price_anomalies(db, ["TEST"], config)
+        assert len(anomalies) == 1
+        assert abs(anomalies[0]["z_score"]) < config.z_threshold
+        assert anomalies[0]["details"]["trigger"] == "abs_return"
+        # Scored at least as high as a z_threshold hit
+        assert anomalies[0]["score"] >= config.z_threshold / 5.0
+
+    def test_threshold_zero_disables(self, db) -> None:
+        cfg = DetectionConfig(lookback_days=30, z_threshold=2.0, cooldown_hours=24,
+                              min_abs_return_pct=0)
+        db.insert_price_data(_series(self.VOLATILE + [109.0]))
+        assert detect_price_anomalies(db, ["TEST"], cfg) == []
+
+    def test_small_move_not_detected(self, db, config) -> None:
+        db.insert_price_data(_series(self.VOLATILE + [103.0]))
+        assert detect_price_anomalies(db, ["TEST"], config) == []
+
+
 class TestHypothesisTicker:
     def test_generated_hypothesis_carries_ticker(self) -> None:
         anomaly = {"ticker": "MSFT", "signal_type": "price_change", "score": 0.5,

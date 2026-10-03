@@ -48,6 +48,7 @@ hackernews:
 detection:
   lookback_days: 20
   z_threshold: 2.0
+  min_abs_return_pct: 7.0
   cooldown_hours: 24
   max_anomalies_per_report: 10
 
