@@ -163,6 +163,8 @@ def generate_hypotheses(
             context = "関連する直近のニュースは特定されていません"
 
         hypotheses.append({
+            "ticker": ticker,
+            "signal_type": signal_type,
             "hypothesis": hypothesis_text,
             "context": context,
             "evidence": evidence,
