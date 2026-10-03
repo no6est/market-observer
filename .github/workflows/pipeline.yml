@@ -52,8 +52,12 @@ jobs:
         run: |
           gh release download db-snapshot --pattern market_obs.db --dir data/ || true
 
+      # Use the JST calendar date. Schedules fire at JST 07:00-10:00, so GitHub's
+      # scheduling delays (often 1-3h) never move the date. With the UTC date, a
+      # daily run delayed past 00:00 UTC took the next day's label, the following
+      # run overwrote it, and a day went missing.
       - name: Set report date
-        run: echo "REPORT_DATE=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+        run: echo "REPORT_DATE=$(TZ=Asia/Tokyo date +%Y-%m-%d)" >> "$GITHUB_ENV"
 
       - name: Run pipeline
         env:
@@ -71,9 +75,12 @@ jobs:
       - name: Ensure release exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # A transient "release not found" followed by "tag already exists" on
+        # create used to fail the job (2026-07-16). Re-check after a failed create.
         run: |
-          gh release view db-snapshot || \
-            gh release create db-snapshot --title "DB Snapshot" --notes "Auto-managed SQLite snapshot"
+          gh release view db-snapshot >/dev/null 2>&1 || \
+            gh release create db-snapshot --title "DB Snapshot" --notes "Auto-managed SQLite snapshot" || \
+            { sleep 5; gh release view db-snapshot >/dev/null; }
 
       - name: Upload DB to release
         env:
