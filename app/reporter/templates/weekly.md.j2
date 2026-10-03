@@ -104,6 +104,37 @@
 
 ---
 
+{% if analysis.trend_board and analysis.trend_board.rows -%}
+## 中期トレンド
+
+> 直近20・60営業日の価格推移です（ユニバース中央値 60日: {{ "%+.1f"|format(analysis.trend_board.universe_median_60 * 100) }}%）。トレンド強度は60日リターンを通常の変動幅で割った値で、±2以上（トレンド）は偶然では起きにくい持続的な動き、±1.5〜2は傾向です。
+
+| 銘柄 | 20日 | 60日 | 対中央値 | トレンド強度 | 60日高値比 | 報告イベント数 | 関連記事数 | 判定 |
+|------|------|------|---------|------------|-----------|--------------|----------|------|
+{% for r in analysis.trend_board.rows -%}
+| {{ r.ticker }} | {{ "%+.1f"|format(r.return_short * 100) }}% | {{ "%+.1f"|format(r.return_long * 100) }}% | {{ "%+.1f"|format(r.relative_long * 100) }}pt | {{ "%+.1f"|format(r.trend_z) }} | {{ "%.1f"|format(r.from_high * 100) }}% | {{ r.event_count }} | {{ r.article_count }} | {{ {"up": "上昇トレンド", "down": "下降トレンド", "weak_up": "上昇傾向", "weak_down": "下降傾向", "none": "—"}.get(r.direction) }}{% if r.under_covered %} ⚠報告少{% endif %} |
+{% endfor %}
+- **⚠報告少**: トレンドが続いているのに、日次レポートでの報告イベント数がユニバース中央値を下回る銘柄。日次の異常検知では捉えにくい緩やかな動きです。
+
+---
+
+{% endif -%}
+
+{% if analysis.event_followups -%}
+## 主要イベントのその後
+
+> 直近30日に報告した±5%以上の価格イベントが、その後どう推移したかの追跡です。
+
+| 銘柄 | イベント日 | 当日の変動 | その後の変化 | 経過営業日 | 推移 |
+|------|-----------|-----------|-------------|-----------|------|
+{% for f in analysis.event_followups -%}
+| {{ f.ticker }} | {{ f.event_session }} | {{ "%+.1f"|format(f.move * 100) }}% | {{ "%+.1f"|format(f.since * 100) }}% | {{ f.sessions }} | {{ {"continued": "継続", "reversed": "反転（半分以上戻し）", "partial": "一部戻し"}.get(f.status) }} |
+{% endfor %}
+
+---
+
+{% endif -%}
+
 {% if analysis.spp_top3 -%}
 ## 構造持続スコア Top3
 

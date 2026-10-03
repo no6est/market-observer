@@ -878,6 +878,14 @@ def run_weekly(
             analysis["signal_calibration"] = compute_signal_calibration(db, today)
         except Exception:
             logger.exception("Failed to compute signal calibration")
+
+        # Medium-term trends and follow-up of recent large moves
+        try:
+            from app.enrichers.trend_tracker import compute_event_followups, compute_trend_board
+            analysis["trend_board"] = compute_trend_board(db, cfg.tickers, today)
+            analysis["event_followups"] = compute_event_followups(db, today)
+        except Exception:
+            logger.exception("Failed to compute trend board")
         output_dir = Path(cfg.report.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         try:

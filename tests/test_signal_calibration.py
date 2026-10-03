@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 from app.enrichers.signal_calibration import (
     MIN_SAMPLES,
-    _event_session_index,
+    event_session_index,
     compute_signal_calibration,
 )
 from app.reporter.daily_report import generate_weekly_report
@@ -58,12 +58,12 @@ class TestEventSession:
     def test_run_after_close_maps_to_same_session(self) -> None:
         series = [(d, 1.0) for d in DATES]
         e = {"created_at": f"{DATES[10]} 23:30:00"}
-        assert _event_session_index(series, e) == 10
+        assert event_session_index(series, e) == 10
 
     def test_run_before_close_maps_to_previous_session(self) -> None:
         series = [(d, 1.0) for d in DATES]
         e = {"created_at": f"{DATES[10]} 15:00:00"}
-        assert _event_session_index(series, e) == 9
+        assert event_session_index(series, e) == 9
 
 
 class TestComputeSignalCalibration:

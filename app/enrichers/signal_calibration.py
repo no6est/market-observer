@@ -48,7 +48,7 @@ def _load_prices(db: Any, tickers: set[str], start: str, end: str) -> dict[str, 
     return prices
 
 
-def _event_session_index(series: list[tuple[str, float]], event: dict[str, Any]) -> int | None:
+def event_session_index(series: list[tuple[str, float]], event: dict[str, Any]) -> int | None:
     """Index of the last session already closed when the event was recorded."""
     created = _parse_ts(event.get("created_at") or "")
     if created is None:
@@ -64,6 +64,24 @@ def _event_session_index(series: list[tuple[str, float]], event: dict[str, Any])
         if close_time <= created:
             idx = i
     return idx
+
+
+def locate_move_session(
+    series: list[tuple[str, float]], idx: int, move_pct: float, max_back: int = 5,
+) -> int | None:
+    """Return the session (at or before idx) whose daily return matches move_pct.
+
+    A move can be reported days after it happened (stale data, weekends), so
+    this searches back up to max_back sessions for a daily return within
+    0.5pt of the reported percentage. Returns None when nothing matches: the
+    reported move does not exist in the current (split-adjusted) prices, e.g.
+    CRWD's 4:1 split reported as -74.9%, and cannot be evaluated.
+    """
+    for i in range(idx, max(0, idx - max_back), -1):
+        ret_pct = (series[i][1] / series[i - 1][1] - 1) * 100
+        if abs(ret_pct - move_pct) <= 0.5:
+            return i
+    return None
 
 
 def _daily_returns(series: list[tuple[str, float]]) -> list[float]:
@@ -128,7 +146,7 @@ def compute_signal_calibration(
         series = prices.get(e.get("ticker"))
         if not series:
             continue
-        idx = _event_session_index(series, e)
+        idx = event_session_index(series, e)
         if idx is None or idx < 1:
             continue
         signal = e.get("signal_type")
@@ -138,6 +156,9 @@ def compute_signal_calibration(
             if not m or float(m.group(1)) == 0:
                 continue
             direction = 1 if float(m.group(1)) > 0 else -1
+            idx = locate_move_session(series, idx, float(m.group(1)))
+            if idx is None:
+                continue
             spp = e.get("spp")
             groups = ["all"]
             if spp is not None and spp >= SPP_HIGH:
