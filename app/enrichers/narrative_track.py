@@ -38,9 +38,27 @@ except ImportError:
     pass
 
 
+# Summaries written by the detectors (e.g. "\u524d\u65e5\u6bd4+2.25%\u306e\u4fa1\u683c\u5909\u52d5",
+# "8\u4ef6\u306e\u8a00\u53ca\uff08\u901a\u5e38\u306e2.6\u500d\uff09", "\u51fa\u6765\u9ad8\u304c\u5e73\u5747\u306e3.0\u500d"). They carry no topic, but
+# their fragments ("\u524d\u65e5\u6bd4", "\u4ef6\u306e\u8a00\u53ca", "\u901a\u5e38\u306e") used to become keywords and
+# chained unrelated events into one long-running track.
+_DETECTOR_SUMMARY_PATTERNS = (
+    re.compile(r"\u524d\u65e5\u6bd4[+\-]?[\d.]+%\u306e\u4fa1\u683c\u5909\u52d5"),
+    re.compile(r"\d+\u4ef6\u306e\u8a00\u53ca\uff08\u901a\u5e38\u306e[\d.]+\u500d\uff09"),
+    re.compile(r"\u51fa\u6765\u9ad8\u304c\u5e73\u5747\u306e[\d.]+\u500d"),
+)
+
+
+def _strip_detector_summaries(text: str) -> str:
+    """Remove detector-generated template phrases from text."""
+    for pattern in _DETECTOR_SUMMARY_PATTERNS:
+        text = pattern.sub(" ", text)
+    return text
+
+
 def _tokenize(text: str) -> list[str]:
-    """Extract lowercase tokens (3+ chars) excluding stop words."""
-    tokens = re.findall(r"[a-zA-Z\u3040-\u9fff]{3,}", text.lower())
+    """Extract lowercase tokens (3+ chars) excluding stop words and templates."""
+    tokens = re.findall(r"[a-zA-Z\u3040-\u9fff]{3,}", _strip_detector_summaries(text).lower())
     return [t for t in tokens if t not in _STOP_WORDS]
 
 
@@ -150,7 +168,12 @@ def match_to_existing_tracks(
             if emb_sim is not None:
                 kw_overlap = max(kw_overlap, emb_sim)
 
-        composite = 0.6 * kw_overlap + 0.4 * tk_overlap
+        if not keyword_set and not track_keywords:
+            # Neither side has topical keywords (no news found): continuity can
+            # only be judged by the tickers involved.
+            composite = tk_overlap
+        else:
+            composite = 0.6 * kw_overlap + 0.4 * tk_overlap
 
         if kw_overlap >= keyword_threshold or composite >= keyword_threshold:
             if composite > best_score:

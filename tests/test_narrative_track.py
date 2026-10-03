@@ -89,6 +89,21 @@ class TestExtractKeywords:
     def test_empty_events(self):
         assert _extract_keywords_from_events([]) == []
 
+    def test_detector_template_summaries_are_ignored(self):
+        events = [
+            {"summary": "前日比-21.75%の価格変動"},
+            {"summary": "8件の言及（通常の2.6倍）"},
+            {"summary": "出来高が平均の0.39倍"},
+        ]
+        assert _extract_keywords_from_events(events) == []
+
+    def test_template_stripped_but_titles_kept(self):
+        events = [{"summary": "前日比+2.25%の価格変動",
+                   "evidence_titles": ["Microsoft Office chief is leaving"]}]
+        kw = _extract_keywords_from_events(events)
+        assert "microsoft" in kw
+        assert not any("前日比" in k or "価格変動" in k for k in kw)
+
 
 # --- Ticker extraction ---
 
@@ -168,6 +183,24 @@ class TestMatchToExistingTracks:
             tracks,
         )
         assert result is not None
+
+    def test_no_keywords_matches_on_same_tickers(self):
+        tracks = [{
+            "category": "その他",
+            "keywords": [],
+            "primary_tickers": ["MDB"],
+            "narrative_id": "test-1",
+        }]
+        assert match_to_existing_tracks("その他", [], ["MDB"], tracks) is not None
+
+    def test_no_keywords_different_tickers_no_match(self):
+        tracks = [{
+            "category": "その他",
+            "keywords": [],
+            "primary_tickers": ["PATH", "NEE"],
+            "narrative_id": "test-1",
+        }]
+        assert match_to_existing_tracks("その他", [], ["MDB"], tracks) is None
 
     def test_empty_existing_tracks(self):
         result = match_to_existing_tracks(

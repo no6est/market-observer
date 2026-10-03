@@ -46,6 +46,8 @@ _STOP_WORDS = frozenset({
     "year", "years", "time", "don", "doesn", "didn",
     "can", "could", "would", "there", "here", "things",
     "something", "anything", "been", "back", "well", "good", "way",
+    # Generic verbs / HN title prefixes that surfaced as "emerging themes"
+    "using", "use", "show", "ask", "first", "best", "top", "sales",
     # Financial / market generic terms (too broad to be themes)
     "stock", "stocks", "market", "markets", "share", "shares",
     "trading", "trade", "trades", "investor", "investors",
