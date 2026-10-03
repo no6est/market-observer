@@ -11,6 +11,20 @@ logger = logging.getLogger(__name__)
 
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
+# Thinking models count reasoning tokens against maxOutputTokens, so a small
+# budget gets consumed by thinking and the visible answer is cut mid-sentence.
+# Reserve extra room on top of the caller's visible-output budget.
+_THINKING_TOKEN_RESERVE = 2048
+
+
+def _thinking_config(model: str) -> dict[str, Any] | None:
+    """Return a thinkingConfig that keeps reasoning minimal, or None if unsupported."""
+    if model.startswith("gemini-3"):
+        return {"thinkingLevel": "low"}
+    if model.startswith("gemini-2.5-flash"):
+        return {"thinkingBudget": 0}
+    return None
+
 
 class GeminiClient:
     """Lightweight Gemini REST API client using requests."""
@@ -20,18 +34,58 @@ class GeminiClient:
         self.model = model
         self._url = f"{_API_BASE}/{model}:generateContent"
 
+    def _build_payload(self, prompt: str, max_tokens: int) -> dict[str, Any]:
+        """Build the generateContent request body.
+
+        ``max_tokens`` is the budget for the visible answer; thinking models
+        get an additional reserve so reasoning does not truncate the answer.
+        """
+        generation_config: dict[str, Any] = {
+            "maxOutputTokens": max_tokens,
+            "temperature": 0.3,
+        }
+        thinking = _thinking_config(self.model)
+        if thinking is not None:
+            generation_config["thinkingConfig"] = thinking
+            generation_config["maxOutputTokens"] = max_tokens + _THINKING_TOKEN_RESERVE
+        return {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": generation_config,
+        }
+
+    @staticmethod
+    def _extract_text(data: dict[str, Any]) -> str | None:
+        """Extract the answer text from a response, rejecting truncated output.
+
+        Returns None when there is no candidate or the answer was cut off by
+        the token limit, so callers fall back to their deterministic templates
+        instead of publishing a half sentence.
+        """
+        candidates = data.get("candidates", [])
+        if not candidates:
+            logger.warning("Gemini returned no candidates")
+            return None
+        candidate = candidates[0]
+        finish_reason = candidate.get("finishReason")
+        if finish_reason == "MAX_TOKENS":
+            logger.warning(
+                "Gemini output truncated (finishReason=MAX_TOKENS, usage=%s); discarding",
+                data.get("usageMetadata"),
+            )
+            return None
+        if finish_reason not in (None, "STOP"):
+            logger.warning("Gemini finished abnormally (finishReason=%s); discarding", finish_reason)
+            return None
+        parts = candidate.get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+        return text or None
+
     def generate(self, prompt: str, max_tokens: int = 1024) -> str | None:
         """Send a prompt to Gemini and return the text response.
 
-        Returns None on failure (non-critical path).
+        Returns None on failure or truncated output (non-critical path).
         """
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "maxOutputTokens": max_tokens,
-                "temperature": 0.3,
-            },
-        }
+        payload = self._build_payload(prompt, max_tokens)
         try:
             resp = requests.post(
                 self._url,
@@ -40,14 +94,7 @@ class GeminiClient:
                 timeout=30,
             )
             resp.raise_for_status()
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if parts:
-                    return parts[0].get("text", "")
-            logger.warning("Gemini returned no candidates")
-            return None
+            return self._extract_text(resp.json())
         except Exception:
             logger.exception("Gemini API call failed")
             return None
