@@ -8,6 +8,7 @@ title: Report Index
 
 ## 2026-10-31
 - [Structural](2026-10-31_structural.md)
+- [Weekly](2026-10-31_weekly.md)
 
 ## 2026-10-30
 - [Structural](2026-10-30_structural.md)
