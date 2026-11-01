@@ -7,6 +7,7 @@ title: Report Index
 [Report Reading Guide](https://github.com/no6est/market-observer/blob/main/docs/REPORT_READING_GUIDE.md) | [Design Docs](https://github.com/no6est/market-observer/tree/main/docs) | [Repository](https://github.com/no6est/market-observer)
 
 ## 2026-11-01
+- [Monthly](2026-11-01_monthly.md)
 - [Structural](2026-11-01_structural.md)
 
 ## 2026-10-31
